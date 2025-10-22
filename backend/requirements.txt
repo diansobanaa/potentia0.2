@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+supabase
+python-dotenv
+pydantic-settings
+google-generativeai
+httpx
+python-jose[cryptography]
+apscheduler
+aiosmtplib
+redis
+email-validator 

@@ -1,0 +1,32 @@
+
+services:
+  # Service 1: API Aplikasi Anda (Python/Uvicorn)
+  api:
+    build: .                 # Build dari Dockerfile di folder ini
+    ports:
+      - "8000:8000"          # Map port [host]:[container]
+    env_file:
+      - .env                 # Muat variabel dari file .env
+    volumes:
+      - .:/app               # Sinkronkan kode Anda untuk live-reload
+    depends_on:
+      - redis                # Pastikan 'redis' dimulai sebelum 'api'
+    # Perintah CMD dari Dockerfile sudah cukup,
+    # tapi 'command' di sini akan menimpanya (override)
+    # Ini tidak masalah karena perintahnya sama
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Service 2: Database Redis
+  redis:
+    image: "redis:alpine"    # Gunakan image redis yang ringan
+    ports:
+      - "6379:6379"          # Map port redis (opsional, untuk debug)
+    volumes:
+      - redis_data:/data     # Simpan data redis secara permanen
+
+# Definisikan volume 'redis_data' yang kita sebut di atas
+volumes:
+  redis_data:
+
+
+  
