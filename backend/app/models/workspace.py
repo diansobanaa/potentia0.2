@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from uuid import UUID
 from enum import Enum
@@ -11,7 +11,7 @@ class WorkspaceCreate(BaseModel):
     type: WorkspaceType = WorkspaceType.personal
 
 class Workspace(BaseModel):
-    id: UUID
+    id: UUID = Field(alias='workspace_id')
     owner_user_id: UUID
     name: str
     type: WorkspaceType

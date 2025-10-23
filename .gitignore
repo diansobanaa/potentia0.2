@@ -1,0 +1,53 @@
+--- File Gitignore untuk Proyek potentia0.2 ---
+
+Abaikan file .env di semua folder
+
+SANGAT PENTING untuk keamanan!
+
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+
+=== Frontend (Node.js / Next.js) ===
+
+Abaikan folder dependensi
+
+frontend/node_modules/
+
+Abaikan folder build dan cache Next.js
+
+frontend/.next/
+
+Abaikan file log
+
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+=== Backend (Python) ===
+
+Abaikan cache Python
+
+backend/pycache/
+backend/*/pycache/
+
+Abaikan environment virtual Python
+
+backend/venv/
+backend/.venv/
+
+Abaikan file .env khusus backend
+
+backend/.env
+
+=== Umum / Sistem Operasi ===
+
+Abaikan file sistem Mac
+
+.DS_Store
+
+Abaikan file sistem Windows
+
+Thumbs.db

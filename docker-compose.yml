@@ -1,26 +1,55 @@
-version: '3.8'
+# Hapus baris 'version: 3.8' jika Anda mau, ini sudah usang
 services:
+  # --- Layanan Frontend (Next.js) ---
+  frontend:
+    # Menggunakan image, bukan build, karena kita tidak punya Dockerfile
+    image: node:20-alpine
+    command: sh -c "npm install && npm run dev"
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      # Env vars dari file root Anda
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - NEXT_PUBLIC_SUPABASE_URL=https://blcvobkkfimyisuhxvbu.supabase.co
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsY3ZvYmtrZmlteWlzdWh4dmJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5NzY5MDksImV4cCI6MjA3NjU1MjkwOX0.N-k4H9Z5EVu5KazU12qpWl0d6fj5cODdLHJ_xUwiK98
+    depends_on:
+      - backend
+    stdin_open: true
+    tty: true
+
+  # --- Layanan Backend (Python/FastAPI) ---
   backend:
+    # 'build: ./backend' berarti ini butuh Dockerfile di folder ./backend
     build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      # Memuat .env dari folder backend
+      - ./backend/.env
+    volumes:
+      # Mengarahkan folder 'backend' lokal ke '/app' di container
+      - ./backend:/app
     ports:
       - "8000:8000"
     environment:
+      # Env var dari file root Anda
       - REDIS_URL=redis://redis:6379
     depends_on:
       - redis
 
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-      - NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_URL
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
-    depends_on:
-      - backend
-
+  # --- Layanan Redis ---
   redis:
     image: "redis:alpine"
     ports:
       - "6379:6379"
+    volumes:
+      # Menggunakan volume 'redis_data' untuk persistensi
+      - redis_data:/data
+
+# Mendefinisikan volume yang digunakan di atas
+volumes:
+  redis_data:
+
