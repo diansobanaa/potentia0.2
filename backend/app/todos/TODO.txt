@@ -1,0 +1,158 @@
+*** LOGIKA MENYUSUN ULANG ORDER BLOCK***
+
+Catatan untuk Developer (AI atau Manusia): Logika Reordering Block
+Masalah yang Dipecahkan: Kita perlu mengizinkan pengguna untuk menyusun ulang block di dalam canvas. Menggunakan index bilangan bulat (integer) (0, 1, 2, 3...) adalah ide yang buruk. Jika kita memindahkan item dari posisi 10 ke posisi 0, kita harus memperbarui (UPDATE) 10 baris di database untuk menggeser index yang lain. Ini lambat, rumit, dan rawan race condition.
+Solusi: "Fractional Indexing" (Pengindeksan Pecahan)
+Solusinya adalah menggunakan bilangan pecahan (float atau double precision) untuk kolom y_order.
+Status Kesiapan Sistem (Database & Model): Sistem ini SUDAH SIAP untuk "Fractional Indexing". File backend/app/models/block.py (yang ada di Canvas) sudah mendefinisikan y_order sebagai float:
+    Di BlockCreate: y_order: Optional[float] = 0.0
+    Di BlockUpdate: y_order: Optional[float] = None
+    Di Block: y_order: float
+Database Supabase (tabel Blocks) harus memiliki kolom y_order yang tipenya float atau numeric untuk mendukung ini.
+Arsitektur Logika (Pemisahan Tugas)
+Kunci dari arsitektur ini adalah pemisahan tugas yang jelas antara Frontend dan Backend.
+1. Tugas Backend (FastAPI)
+Tugas backend sangat sederhana:"block_id": "d1a3df13-7c35-4241-bde4-feb7668b8702",
+    "canvas_id": "e10f68e9-5947-4429-aaf1-e3c01549dab7",
+    Mengambil Blocks: Saat Frontend meminta daftar block (GET /.../blocks/), Backend HARUS mengembalikannya dalam urutan yang benar. Fungsi get_blocks_in_canvas (di block_queries.py) harus selalu menggunakan .order("y_order").
+    Memperbarui Block: Saat Frontend mengirim permintaan PATCH /.../blocks/{block_id} dengan data {"y_order": 1.5}, Backend HANYA perlu memperbarui satu baris itu.
+Backend TIDAK PERLU tahu-menahu tentang logika "menggeser" item lain. Logika di endpoints/blocks.py dan queries/block_queries.py (yang ada di Canvas) sudah cukup dan tidak perlu diubah.
+2. Tugas Frontend (Next.js)
+Semua "otak" dari logika reordering ada di Frontend (Aplikasi React/Next.js Anda).
+Saat pengguna menyeret Block B dan melepaskannya di posisi baru, Frontend harus:
+    Melihat block "tetangga" barunya: block tepat di atasnya (prev) dan block tepat di bawahnya (next).
+    Menghitung nilai y_order baru berdasarkan tetangganya.
+    Mengirim satu panggilan API PATCH ke backend dengan y_order baru tersebut.
+Skenario Perhitungan di Frontend
+Asumsi Database Awal:
+    Block A: { "id": "uuid-A", "y_order": 1.0 }
+    Block B: { "id": "uuid-B", "y_order": 2.0 }
+    Block C: { "id": "uuid-C", "y_order": 3.0 }
+Skenario 1: Pengguna memindahkan Block B ke antara A dan C (tidak berubah posisi, hanya contoh).
+    Frontend melihat prev = Block A (1.0)
+    Frontend melihat next = Block C (2.0)
+    y_order_baru = (prev.y_order + next.y_order) / 2
+    y_order_baru = (1.0 + 2.0) / 2 = 1.5
+    Panggilan API: PATCH /.../blocks/{uuid-B} dengan body: {"y_order": 1.5}
+Database Sekarang: A (1.0), B (1.5), C (2.0)
+Skenario 2: Pengguna memindahkan Block A ke posisi paling atas (di atas B).
+    Stok saat ini: B (1.5), C (2.0)
+    Frontend melihat prev = null (karena paling atas)
+    Frontend melihat next = Block B (1.5)
+    y_order_baru = (0 + next.y_order) / 2 (Kita anggap ada nilai "0" di atas item pertama)
+    y_order_baru = (0 + 1.5) / 2 = 0.75
+    Panggilan API: PATCH /.../blocks/{uuid-A} dengan body: {"y_order": 0.75}
+Database Sekarang: A (0.75), B (1.5), C (2.0)
+Skenario 3: Pengguna memindahkan Block B ke posisi paling bawah (di bawah C).
+    Stok saat ini: A (0.75), C (2.0)
+    Frontend melihat prev = Block C (2.0)
+    Frontend melihat next = null (karena paling bawah)
+    y_order_baru = prev.y_order + 1.0 (Kita cukup tambahkan 1.0 ke item terakhir)
+    y_order_baru = 2.0 + 1.0 = 3.0
+    Panggilan API: PATCH /.../blocks/{uuid-B} dengan body: {"y_order": 3.0}Database Sekarang: A (0.75), C (2.0), B (3.0)Keuntungan Arsitektur Ini    Performa Tinggi: Memindahkan satu item hanya membutuhkan satu panggilan API (PATCH) dan satu operasi UPDATE di database, tidak peduli seberapa besar daftarnya.    Logika Backend Sederhana: Backend Anda tetap "bodoh". Ia tidak perlu tahu tentang list atau reordering, ia hanya tahu cara memperbarui satu block. Ini membuat kode di endpoints/blocks.py dan queries/block_queries.py (yang ada di Canvas) sangat bersih.    Tangguh: Karena kita menggunakan float, kita bisa terus membagi dua index untuk waktu yang sangat lama sebelum kehabisan presisi (1.0, 1.5, 1.25, 1.125, 1.0625, ...).
+
+docker-compose logs -f potentia
+
+=> BAgaimana cara render block dari teks gemini ke canvas
+
+
+todo malam ini 24 otktober
+membuat logika konversasi dengan AI
+    pastikan setiap vector embedding menggunakan vector(768) agar cocok dengan model Google. [done]
+    merubah tabel yang sudah ada ke struktur baru {Canvas, Block} struktur sudah siap di figma (Done)
+    membuat tabel baru  {CanvasEmbedding, BlockEmbedding, } struktur sudah siap di figma (Done)
+    membuat tabel baru system_prompts menggantikan supermasterprompt. struktur sudah siap di figma (DOne)
+    membuat tabel Roles, MasterPrompts, RolesEmbedding. struktur sudah siap di figma (Done)
+
+    membuat tabel embedding untuk tabel Messages. buat ulang dari konsep abstrak. (done)
+
+    ################
+    ## PENTING    ##
+    ################  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  ###  #
+    ## setiap tabel embedding yang Anda gunakan untuk pencarian makna teks (semantik) harus menggunakan vector_cosine_ops #
+    ## Tambahkan deskripsi untuk setiap tabel                                                                             #
+    ## setiap vector embedding menggunakan vector(768)                                                                    #
+    #######################################################################################################################
+
+    Cek logika input data canvas, block, messages
+        tambahkan logika input data embeded canvas summary ke CanvasEmbedded | pending | keputusan sementara tidak perlu karena chunk dari block sudah cukup
+        tambahkan logika input data embedded block dan canvas ke BlocksEmbedded [done]
+            Tambahkan Helper: Buat file helper.py backend/app/services/utils/helper.py. [done]
+            refactor sekalian ganti logika block_queries.py: Ganti fungsi create_block. Perbarui juga fungsi lain di file ini (get, update, delete) untuk menerima dan menggunakan authed_client. [done]
+            refactor block_service.py [done]
+            buatkan flowchart sistem yang barusan kita lakukan untuk dokumentasi. simpan di figma [done]
+        tambahkan logika input data embedded message ke MessageEmbeddings [done]
+        create canvas tetap harus diubah untuk mengisi canvas_metadata [done]
+
+    Buat ulang sistem percakapan dengan api gemini 
+        masukan alur kerja system Kerja RAG (Retrieval-Augmented Generation) Terpadu Berbasis Data Aplikasi dari canvas [done]
+        masukan semua skema database diatas ke gemini untuk menjadi konteks [done]
+        sebagian konteks sudah ada di thread gemini "Pemahaman Alur Kerja RAG Terpadu" [done]
+        membuat Logika SQL untuk Fungsi RPC [done]
+            find_relevant_role_id [done]
+            find_relevant_blocks [done]
+            find_relevant_history [done]
+        Merumuskan Prompt Global (Super Master Prompt): Teks untuk tabel SystemPrompts [done] sementara untuk kebutuhan mvp [done]
+        Contoh Prompt Peran (Master Prompt Anak): Setidaknya satu [done] sementara untuk kebutuhan mvp [done]
+        Menulis Logika Backend Percakapan RAG(FastAPI)
+        Menjalankan Skrip SQL di Supabase
+        Membuat endpoint dengan logika all in one untuk mengisi tabel system_prompts, Roles, RolesEmbedding, MasterPrompts. (sementara) [done]
+        Mengisi tabel system_prompts, Roles, RolesEmbedding, MasterPrompts. [done]
+        tambah list type block ini "msg": "Input should be 'text', 'task_item', 'heading_1', 'heading_2', 'image' or 'code'" + numbered_list item dll
+
+        tabel message masuk, tabel embedding belum. ada 2 fungsi untuk ini. 
+            add_message backend\app\db\queries\conversation_queries.py (dipakai)
+            save_message backend\app\db\repositories\memory_repository.py (belum dipakai)
+
+Buat sistem schedule
+
+
+
+Belajar RAG
+Belajar MCP
+Belajar multi agent
+
+ada kalimat Sebagai Stratega Bisnis (CEO) dalam output. Buat lebih user center melalui systemprompt
+
+ouput kedua:
+Berdasarkan permintaan Anda untuk analisis SWOT awal untuk ide aplikasi pemandu wisata lokal, saya akan menyusun kerangka kerja strategis sebagai seorang CEO.\n\nNamun, karena hasil dari pemanggilan alat `find_relevant_blocks_from_canvas` tidak mengembalikan konten spesifik mengenai ide aplikasi tersebut, saya akan membuat analisis SWOT **generik** berdasarkan asumsi umum tentang aplikasi pemandu wisata lokal. Mohon berikan detail spesifik ide Anda jika Anda ingin analisis yang lebih tajam.\n\nBerikut adalah analisis SWOT awal untuk ide aplikasi pemandu wisata lokal:\n\n### Analisis SWOT Awal (Aplikasi Pemandu Wisata Lokal)\n\n| Kategori | Faktor | Implikasi Strategis |\n| :--- | :--- | :--- |\n| **Strengths (Kekuatan)** | **Daya Tarik Lokal Mendalam** | Potensi menawarkan pengalaman otentik yang tidak dapat ditiru oleh platform besar (misalnya, tur niche, cerita lokal). Ini membangun keunggulan diferensiasi. |\n| | **Model Bisnis Fleksibel** | Potensi untuk monetisasi melalui komisi tur, langganan premium untuk pemandu, atau iklan yang sangat tertarget. |\n| **Weaknesses (Kelemahan)** | **Ketergantungan pada Kualitas Pemandu** | Kualitas pengalaman pengguna sangat bergantung pada *user-generated content* (UGC) atau perekrutan pemandu yang ketat. Skalabilitas kualitas sulit dijaga. |\n| | **Akses Pasar Awal yang Terbatas** | Membutuhkan investasi pemasaran signifikan untuk membangun basis pengguna awal di kota/wilayah target sebelum mencapai efek jaringan. |\n| **Opportunities (Peluang)** | **Pertumbuhan *Experiential Tourism*** | Tren wisatawan global saat ini beralih dari sekadar melihat ke *mengalami*. Aplikasi ini berada di jalur tren makro yang tepat. |\n| | **Integrasi Teknologi Baru** | Potensi untuk mengintegrasikan AR/VR untuk pratinjau tur atau menggunakan AI untuk personalisasi rute secara *real-time*. |\n| **Threats (Ancaman)** | **Kompetitor Dominan** | Platform pemesanan besar (misalnya TripAdvisor, Airbnb Experiences) yang sudah memiliki basis pengguna dan kepercayaan merek yang mapan. |\n| | **Regulasi Lokal** | Potensi adanya regulasi kota/negara terhadap operator tur digital yang dapat membatasi operasional atau memerlukan biaya lisensi tinggi. |\n\n**Rekomendasi Strategis Awal:**\n\n1.  **Fokus Diferensiasi:** Jangan bersaing pada harga atau kuantitas. Fokuskan strategi go-to-market pada **pengalaman eksklusif** yang tidak tersedia di platform pesaing.\n2.  **Mitigasi Risiko Kualitas:** Segera bangun sistem kurasi atau rating pemandu yang sangat ketat untuk memastikan **keandalan layanan** sebagai fondasi kepercayaan merek.\n\nApa langkah Anda selanjutnya terkait pemetaan kompetitor atau rencana akuisisi pengguna?
+Pemanggilan alat `find_relevant_blocks_from_canvas` tidak mengembalikan konten spesifik mengenai ide. rubah system prompt untuk tidak mengeluarkan output tentang internal kita.
+
+selalu 
+{
+  "detail": {
+    "status": "error",
+    "message": "Object of type UUID is not JSON serializable",
+    "conversation_id": "ee8b8ed8-f187-47a9-8138-0e3b8cff2bf4"
+  }
+}
+harus input 2 kali baru bisa
+
+ada error 
+{
+  "status": "error",
+  "message": "Kesalahan internal: list index out of range",
+  "metadata": {
+    "role_info": {
+      "role_id": "c9461e0a-4459-4605-a07e-7f0ac15e5a27",
+      "score": "0.63",
+      "prompt_used": true
+    }
+  },
+  "conversation_id": "ee8b8ed8-f187-47a9-8138-0e3b8cff2bf4"
+}
+
+{
+  "status": "error",
+  "message": "Kesalahan internal: Could not convert `part.function_call` to text.",
+  "metadata": {
+    "role_info": {
+      "role_id": "c9461e0a-4459-4605-a07e-7f0ac15e5a27",
+      "score": "0.63",
+      "prompt_used": true
+    }
+
+
+  },
+  "conversation_id": "ee8b8ed8-f187-47a9-8138-0e3b8cff2bf4"
+}

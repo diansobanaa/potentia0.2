@@ -1,0 +1,357 @@
+🧭 WORKFLOW SISTEM MEMORI DAN RESPON
+flowchart TD
+    A[1️⃣ Pesan User Masuk] --> B{2️⃣ Deteksi Konteks}
+    
+    B -->|Masih Topik Lama| C[Ambil Summary Memory Terkait]
+    B -->|Topik Baru| D[Buat Konteks Baru + Summary Kosong]
+    
+    C --> E[Ambil 10–30 Pesan Terakhir]
+    D --> E
+    
+    E --> F[Bangun Final Prompt]
+    
+    F -->|Isi: Bio User + Summary Aktif + Pesan Terakhir + Pesan Baru| G[API Call: Model Utama GPT-5]
+    
+    G --> H[Tampilkan Jawaban ke User]
+    
+    H --> I{Sudah > 50 Pesan / Panjang Konteks?}
+    
+    I -->|Ya| J[API Call: Summary Generator]
+    I -->|Tidak| K[Selesai / Tunggu Pesan Berikutnya]
+    
+    J --> L[Gabungkan Summary Lama + Pesan Baru]
+    L --> M[Update Summary Memory Aktif]
+    M --> K
+
+
+FLOWCHART: PEMOTONGAN & PENYESUAIAN KONTEKS SAAT USER BELOK TOPIK
+flowchart TD
+    A[1️⃣ Pesan Baru Masuk] --> B[2️⃣ Hitung Total Token Percakapan]
+    B --> C{3️⃣ Apakah Melebihi Batas Token mis. 128k?}
+
+    C -->|Tidak| D[4️⃣ Jalankan Deteksi Konteks Baru/Lama]
+    C -->|Ya| E[4️⃣a Lakukan Pemotongan Konteks Lama]
+
+    %% Jika tidak melebihi batas
+    D --> F{Apakah Konteks Masih Sama?}
+    F -->|Ya| G[Gunakan Summary & Pesan Terakhir Aktif]
+    F -->|Tidak| H[Belok Konteks → Panggil Context Classifier]
+
+    H --> I[5️⃣ Buat Summary Konteks Lama]
+    I --> J[Simpan Sebagai Summary Memory Lama]
+    J --> K[Buat Context Baru + Summary Kosong]
+
+    %% Jika melebihi batas token
+    E --> L[5️⃣ Tentukan Token yang Harus Dibuang]
+    L --> M[Evaluasi Pesan Lama Berdasarkan Prioritas]
+
+    M --> N{Pesan Penting?}
+    N -->|Ya| O[Ringkas ke Summary Chunk]
+    N -->|Tidak| P[Hapus dari Context Window]
+
+    O --> Q[Simpan Summary Chunk di Memory Aktif]
+    P --> Q
+    Q --> R[6️⃣ Bangun Context Window Baru:<br>Summary + Pesan Tengah + Pesan Terbaru]
+    K --> R
+    G --> R
+
+    R --> S[7️⃣ Bangun Final Prompt]
+    S --> T[8️⃣ API Call ke Model Utama GPT-5]
+    T --> U[9️⃣ Jawaban Dikirim ke User]
+
+FLOWCHART: PEMBENTUKAN FINAL PROMPT
+flowchart TD
+    A[1️⃣ Mulai: Pesan User Baru] --> B[2️⃣ Deteksi Konteks Aktif]
+    B --> C{3️⃣ Ambil Summary Memory Relevan}
+    C -->|Ada| D[Gabungkan ke Context Aktif]
+    C -->|Tidak Ada| E[Gunakan Context Kosong Baru]
+
+    D --> F[4️⃣ Ambil Instruction Memory Gaya Todd, Bio, Aturan Tetap]
+    E --> F
+
+    F --> G[5️⃣ Ambil 10–30 Pesan Terakhir. User + Assistant]
+    G --> H[6️⃣ Ambil Data Tool Call / Function Call Terbaru]
+    H --> I[7️⃣ Tambahkan Metadata .Waktu, ID Thread, dll]
+    I --> J[8️⃣ Jika Sistem Gunakan RAG → Tambahkan Retrieval Context]
+    J --> K[9️⃣ Susun Semua Komponen Jadi Final Prompt]
+    K --> L[🔟 Kirim ke Model Utama .GPT-5]
+    L --> M[Model Menghasilkan Jawaban]
+    M --> N[Hasil Dikirim ke User]
+
+
+
+Flowchart: Deteksi Konteks & Pembentukan Final Prompt
+flowchart TD
+
+A[🟢 User kirim pesan baru] --> B[Ambil daftar konteks aktif A,B,C...]
+B --> C[Ambil summary & embedding tiap konteks]
+C --> D[Buat embedding pesan baru]
+
+D --> E{Hitung cosine similarity <br> antara pesan baru & tiap konteks}
+
+E --> F1{Skor tertinggi > 0.8?}
+E --> F2[Jika tidak, periksa konteks relevan sebagian]
+
+F1 -->|Ya| G1[→ Klasifikasikan sebagai KONTEKS LAMA misal A]
+F1 -->|Tidak| F2
+F2 --> H{Skor tertinggi 0.5–0.8?}
+H -->|Ya| G2[→ Relevan sebagian → tanya klarifikasi atau gabung ke konteks lama]
+H -->|Tidak| G3[→ Buat KONTEKS BARU D]
+
+G3 --> I[Catat parent_thread dan link asal konteks sebelumnya jika ada]
+G1 --> J[Tambahkan pesan ke summary_context_A]
+G2 --> J
+I --> K[Generate summary_context_D baru]
+J --> L[Perbarui metadata konteks]
+
+L --> M{Bangun FINAL PROMPT}
+
+M --> N1[[🧩 Komponen: System]]
+M --> N2[[🧩 Komponen: Developer]]
+M --> N3[[🧩 Komponen: Summary Memory A/B/C/D]]
+M --> N4[[🧩 Komponen: Instruction Memory]]
+M --> N5[[🧩 Komponen: User pesan terbaru]]
+M --> N6[[🧩 Komponen: Assistant. jawaban terakhir]]
+M --> N7[[🧩 Komponen: Tool / Function Call jika ada]]
+M --> N8[[🧩 Komponen: Contextual Metadata]]
+M --> N9[[🧩 Komponen: Retrieval Context hasil pencarian/RAG]]
+
+N1 & N2 & N3 & N4 & N5 & N6 & N7 & N8 & N9 --> O[🔷 Kirim ke API Model Utama Generate Response.]
+O --> P[Model menjawab & hasil disimpan ke konteks aktif]
+
+
+
+alur penentuan konteks A/B/C/baru hingga pembentukan final prompt
+flowchart TD
+
+%% =====================
+%% 1. INPUT PESAN
+%% =====================
+A[User mengirim pesan baru] --> B[Pre-Processor membaca pesan & metadata]
+
+%% =====================
+%% 2. DETEKSI KONTEKS
+%% =====================
+B --> C{Apakah topik mirip dengan konteks aktif?}
+
+C -->|Ya| D[Tambahkan pesan ke konteks aktif A/B/C]
+C -->|Tidak| E{Apakah mirip dengan konteks lama disimpan di summary?}
+
+E -->|Ya| F[Reaktivasi konteks lama dari summary_memory]
+E -->|Tidak| G[Buat konteks baru Context D]
+
+%% =====================
+%% 3. PEMUTUS KEPUTUSAN
+%% =====================
+subgraph Decision Engine
+D & F & G --> H[Classifier menilai relevansi & jarak semantik antar pesan]
+H --> I[System memilih 1 konteks dominan]
+end
+
+%% =====================
+%% 4. PEMBENTUKAN FINAL PROMPT
+%% =====================
+I --> J[Bangun Final Prompt]
+
+subgraph Final Prompt Components
+J1[System: peran & batasan model]
+J2[Developer: instruksi internal]
+J3[Summary_memory: ringkasan topik lama]
+J4[Instructions_memory: gaya bicara Todd, dsb]
+J5[User: pesan terakhir]
+J6[Assistant: respons terakhir]
+J7[Tool_call / Function_call: hasil panggilan API atau database]
+J8[Contextual_metadata: waktu, lokasi, ID thread]
+J9[Retrieval_context: hasil pencarian eksternal RAG]
+end
+
+J --> J1 & J2 & J3 & J4 & J5 & J6 & J7 & J8 & J9
+J9 --> K[Prompt Akhir Dikirim ke Model]
+
+%% =====================
+%% 5. EKSEKUSI & UPDATE
+%% =====================
+K --> L[Model menghasilkan jawaban]
+L --> M[Update context window aktif]
+M --> N{Apakah jumlah pesan > ambang batas misal 50?}
+
+N -->|Ya| O[Ringkas jadi summary_memory baru dan potong konteks lama]
+N -->|Tidak| P[Simpan sesi berjalan tanpa ringkasan baru]
+
+%% =====================
+%% 6. OUTPUT
+%% =====================
+O --> Q[Response dikirim ke user + summary diperbarui]
+P --> Q
+
+
+
+flowchart sistem ChatGPT arsitektur logis internal
+flowchart TD
+
+%% =====================
+%% 1. INPUT & PREPROCESSING
+%% =====================
+A[🟢 User kirim pesan baru] --> B[Pre-Processor membaca pesan & metadata waktu, thread, ID]
+B --> C[Normalisasi teks, deteksi bahasa, klasifikasi intent]
+
+%% =====================
+%% 2. CONTEXT MANAGER
+%% =====================
+C --> D{Apakah ada sesi aktif?}
+
+D -->|Ya| E[Ambil daftar pesan aktif n terakhir + summary memory]
+D -->|Tidak| F[Buat session baru di memory store]
+
+E --> G[Hitung embedding pesan baru & pesan di konteks lama]
+G --> H{Apakah pesan relevan dengan konteks lama > threshold?}
+H -->|Ya| I[Gunakan konteks lama append message]
+H -->|Tidak| J[Mulai konteks baru + summary kosong]
+
+%% =====================
+%% 3. MEMORY SYSTEM
+%% =====================
+subgraph Memory Manager
+I & J --> K[Ambil summary_memory, instruction_memory, bio, developer notes]
+K --> L[Gabungkan semua memori aktif]
+end
+
+%% =====================
+%% 4. PROMPT BUILDER
+%% =====================
+L --> M[Bangun Final Prompt]
+subgraph Final Prompt Components
+M1[[System: Role, Style, Batasan Model]]
+M2[[Developer: Internal Setup Instruction]]
+M3[[Summary Memory: Ringkasan Konteks Lama]]
+M4[[Instruction Memory: Gaya Todd, dsb]]
+M5[[User: Pesan Terbaru]]
+M6[[Assistant: Respons Terakhir]]
+M7[[Tool Calls: Python, Web, Search, dll]]
+M8[[Contextual Metadata: Waktu, ID, Mode Chat]]
+M9[[Retrieval Context: Hasil RAG jika ada]]
+end
+M --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9
+M9 --> N[Prompt Akhir Siap Dikirim ke Model GPT-5]
+
+%% =====================
+%% 5. MODEL EXECUTION
+%% =====================
+N --> O[Model GPT-5 Generate Response]
+O --> P[Post-Processor melakukan formatting & filter konten]
+P --> Q[Tampilkan jawaban ke user]
+
+%% =====================
+%% 6. MEMORY UPDATE LOOP
+%% =====================
+Q --> R{Apakah total pesan > ambang batas mis. 50 atau token > limit?}
+R -->|Ya| S[Summarizer aktif → ringkas percakapan jadi summary_memory]
+R -->|Tidak| T[Simpan sesi berjalan tanpa perubahan]
+
+S --> U[Perbarui summary_memory di memory store]
+T --> U
+U --> V[🔁 Kembali ke Context Manager untuk pesan berikutnya]
+
+
+diagram arsitektur fisik sistem ChatGPT (production-level)
+flowchart LR
+    %% =====================
+    %% 1. FRONTEND LAYER
+    %% =====================
+    subgraph F[🧭 FRONTEND User Interface]
+    A1[User: Input Pesan] --> A2[Web / App Client]
+    A2 --> A3[Session Gateway API Endpoint]
+    end
+
+    %% =====================
+    %% 2. ORCHESTRATOR LAYER
+    %% =====================
+    subgraph O[🧩 ORCHESTRATOR Core Logic]
+    A3 --> B1[Preprocessor: Normalisasi, Filtering, Intent Detection]
+    B1 --> B2[Session Manager: Kelola Thread & Token]
+    B2 --> B3[Context Analyzer: Cek relevansi konteks Embedding]
+    B3 --> B4{Konteks relevan?}
+    B4 -->|Ya| B5[Ambil Memory & Pesan Aktif]
+    B4 -->|Tidak| B6[Buat Konteks Baru + Summary Kosong]
+    B5 & B6 --> B7[Prompt Builder: Gabungkan system, summary, user, assistant, tools]
+    B7 --> B8[Inference Manager: Siapkan Payload ke Model API]
+    end
+
+    %% =====================
+    %% 3. MEMORY SYSTEM
+    %% =====================
+    subgraph M[💾 MEMORY SYSTEM]
+    M1[Session Store: pesan aktif sementara]
+    M2[Summary Memory Store]
+    M3[Instruction Memory Store]
+    M4[Vector DB: Embedding Index]
+    M5[Tool Logs]
+    end
+
+    B5 --> M1
+    B3 --> M4
+    B7 --> M2 & M3
+    B2 --> M5
+
+    %% =====================
+    %% 4. MODEL INFERENCE LAYER
+    %% =====================
+    subgraph I[🧠 MODEL INFERENCE GPT-5 Engine]
+    I1[Prompt Processor] --> I2[Tokenizer + Context Window Manager]
+    I2 --> I3[Transformer Engine Attention Layers]
+    I3 --> I4[Output Generator Streaming Text]
+    end
+
+    B8 --> I1
+    I4 --> C1[Postprocessor: Format + Safety Filters]
+    C1 --> C2[Response Delivery ke User]
+    C2 --> A2
+
+    %% =====================
+    %% 5. EXTERNAL TOOL LAYER
+    %% =====================
+    subgraph T[🧮 TOOL / EXTENSION SERVICES]
+    T1[Python Sandbox] 
+    T2[Web Search Engine]
+    T3[File Manager]
+    T4[Code Interpreter]
+    T5[Custom API Connector]
+    end
+
+    B7 -->|Jika ada perintah fungsi| T1 & T2 & T3 & T4 & T5
+    T1 & T2 & T3 & T4 & T5 --> B7
+
+    %% =====================
+    %% 6. MONITORING & FEEDBACK
+    %% =====================
+    subgraph S[🛰️ SUPERVISORY SYSTEMS]
+    S1[Safety & Moderation Layer]
+    S2[Telemetry + Logging Service]
+    S3[Usage & Billing Tracker]
+    end
+
+    A3 --> S1
+    B8 --> S2
+    I4 --> S3
+
+
+    Proses Pemilihan Reasoning (Decision Flow)
+    flowchart TD
+    A[User Message Masuk] --> B[Parsing Intent & Context Match]
+    B --> C{Ada Konteks Aktif?}
+    C -->|Ya| D[Deteksi Pola Kontekstual]
+    C -->|Tidak| E[Inisialisasi Konteks Baru]
+    D --> F[Analisis Tujuan User]
+    E --> F
+    F --> G{Jenis Permintaan}
+    G -->|Teknis| H[Gunakan Deductive / Algorithmic Reasoning]
+    G -->|Konseptual| I[Gunakan Analogical / Causal Reasoning]
+    G -->|Kreatif| J[Gunakan Divergent / Generative Reasoning]
+    G -->|Strategis| K[Gunakan Abstractive / Planning Reasoning]
+    H --> L[Bangun Rencana Jawaban]
+    I --> L
+    J --> L
+    K --> L
+    L --> M[Compose Response dengan Struktur]
+    M --> N[Verifikasi Konsistensi & Gaya]
+    N --> O[Output Final ke User]

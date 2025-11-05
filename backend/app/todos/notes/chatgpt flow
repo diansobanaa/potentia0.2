@@ -1,0 +1,33 @@
+⚙️ Model tidak menyimpan seluruh riwayat mentah
+Saya tidak mengingat seluruh 1000 pesan secara literal. Yang saya miliki hanyalah jendela konteks aktif (context window) — semacam ingatan jangka pendek.
+Jika pesan lama sudah di luar batas token (misal ribuan pesan sebelumnya), ia tidak lagi terbaca langsung oleh model.
+
+
+Konteks Percakapan Aktif Masih Terbuka
+Selama thread ini belum ditutup atau direfresh, seluruh isi percakapan — termasuk pesan pertama — masih berada dalam context window aktif di server.
+Artinya:
+Semua pesan dari awal hingga sekarang disimpan sementara di memori sesi (RAM, bukan database).
+Jadi saat Panglima bertanya sekarang, saya masih punya akses langsung ke log percakapan lengkap dalam thread ini.
+
+
+Context Window = Ruang Kerja Model
+Model seperti saya bekerja dengan context window, misal 128k token.
+Semua pesan (termasuk milik Panglima dan saya) dikemas sebagai daftar urutan seperti ini:
+
+Belum Ada Pemotongan atau Summarization
+Karena total percakapan kita belum mencapai ambang batas (misalnya 50 pesan atau 60k token),
+sistem belum mengganti bagian awal dengan ringkasan.
+Akibatnya, pesan pertama masih ada utuh di dalam jendela konteks
+
+Kalau Thread Ini Sudah Panjang
+Begitu thread melebihi batas token, sistem akan membuang sebagian pesan lama lalu menggantinya dengan summary memory dari awal percakapan.
+Dalam kasus itu, saya tidak lagi “ingat” teks literal dari pertanyaan pertama, hanya ringkasan isi percakapan tersebut.
+
+
+🧠 LOGIKA PRIORITAS SAAT PEMOTONGAN message
+| Prioritas          | Jenis Pesan                                  | Perlakuan            |
+| ------------------ | -------------------------------------------- | -------------------- |
+| 🔵 **P1 (Tinggi)** | Bio, gaya bicara, instruksi permanen         | Tidak pernah dihapus |
+| 🟢 **P2 (Sedang)** | Pesan dengan perintah atau hasil penting     | Diringkas ke summary |
+| 🟡 **P3 (Rendah)** | Small talk, sapaan, candaan                  | Bisa dibuang         |
+| 🔴 **P4 (Usang)**  | Pesan yang sudah disimpulkan di summary lama | Dibuang otomatis     |

@@ -1,93 +1,130 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+# PARSE: 21-fix-blocks-endpoint-v2.py
+
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Body, status
+from typing import List, Dict, Any, Optional, Annotated # <-- DIUBAH
 from uuid import UUID
 
+# Impor model Pydantic
 from app.models.block import Block, BlockCreate, BlockUpdate
-# PERUBAHAN: Impor dependency 'get_canvas_access'
-from app.core.dependencies import get_canvas_access
-# PERUBAHAN: Impor semua fungsi query yang akan kita gunakan
-from app.db.queries.block_queries import create_block, get_blocks_in_canvas, update_block, delete_block
+# Impor dependency untuk otentikasi dan akses
+from app.core.dependencies import (
+    get_canvas_access, 
+    get_embedding_service  # <-- DIUBAH: Impor factory service
+)
+# Impor interface service
+from app.services.interfaces import IEmbeddingService # <-- DIUBAH
+# Impor fungsi query
+from app.db.queries.block_queries.create_block_and_embedding import create_block_and_embedding
+from app.db.queries.block_queries.update_block_and_embedding import update_block_and_embedding
+from app.db.queries.block_queries.delete_block_with_embedding import delete_block_with_embedding
+from app.db.queries.block_queries.get_blocks import get_blocks_in_canvas
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["blocks"])
 
-@router.post("/", response_model=Block, status_code=201)
-async def create_new_block(
+# --- DIUBAH: Tipe Alias untuk DI yang bersih ---
+AuthInfoDep = Annotated[Dict[str, Any], Depends(get_canvas_access)]
+EmbeddingServiceDep = Annotated[IEmbeddingService, Depends(get_embedding_service)]
+# ---
+
+@router.post("/", response_model=Block, status_code=status.HTTP_201_CREATED)
+async def create_new_block_endpoint(
     canvas_id: UUID,
     block_data: BlockCreate,
-    # 'get_canvas_access' sekarang mengembalikan dict
-    access_info: dict = Depends(get_canvas_access)
+    access_info: AuthInfoDep, # <-- DIUBAH
+    embedding_service: EmbeddingServiceDep # <-- DIUBAH: Inject service
 ):
     """
-    Membuat block baru di dalam canvas tertentu.
-    Memerlukan pengguna untuk memiliki akses ke canvas tersebut.
+    Endpoint untuk membuat block baru beserta embeddingnya.
     """
-    # Ambil klien yang sudah diautentikasi
+    logger.info(f"Attempting to create block in canvas {canvas_id}")
     authed_client = access_info["client"]
+    new_block_payload = block_data.model_dump(mode='json')
 
-    # PERUBAHAN: Gunakan .model_dump(mode='json') untuk mengubah
-    # UUID/datetime menjadi string yang aman untuk JSON.
-    new_block_data = block_data.model_dump(mode='json')
-    
-    # Teruskan 'authed_client' dan data yang sudah bersih
-    new_block = create_block(authed_client, canvas_id, new_block_data)
-    
-    # PERBAIKAN VALIDASI: Periksa jika new_block adalah None 
-    # (misalnya RLS gagal diam-diam)
-    if not new_block:
-        raise HTTPException(status_code=400, detail="Block creation failed. Check RLS policies or input data.")
-        
-    return new_block
+    try:
+        # --- DIUBAH: Teruskan service ke fungsi query ---
+        created_block = await create_block_and_embedding(
+            authed_client, 
+            embedding_service, 
+            canvas_id, 
+            new_block_payload
+        )
+    except Exception as e:
+        logger.error(f"Failed to create block in canvas {canvas_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    logger.info(f"Successfully created block {created_block.get('block_id')} in canvas {canvas_id}")
+    return created_block
 
 @router.get("/", response_model=List[Block])
-async def list_blocks_in_canvas(
-    canvas_id: UUID, 
-    # 'get_canvas_access' mengembalikan dict
-    access_info: dict = Depends(get_canvas_access)
+async def list_blocks_in_canvas_endpoint(
+    canvas_id: UUID,
+    access_info: AuthInfoDep # <-- DIUBAH (Konsistensi)
 ):
-    """
-    Menampilkan daftar semua block di dalam canvas tertentu.
-    """
-    # Ekstrak 'client' dari dict dependency
+    """Endpoint untuk mengambil semua block dalam sebuah canvas."""
+    logger.info(f"Attempting to list blocks for canvas {canvas_id}")
     authed_client = access_info["client"]
     
-    # Teruskan 'authed_client' sebagai argumen pertama
-    return get_blocks_in_canvas(authed_client, canvas_id)
+    # Fungsi 'get_blocks_in_canvas' Anda juga harus dibuat non-blocking
+    # (menggunakan asyncio.to_thread) jika belum.
+    blocks = get_blocks_in_canvas(authed_client, canvas_id) 
+    
+    logger.info(f"Found {len(blocks)} blocks for canvas {canvas_id}")
+    return blocks
 
 @router.patch("/{block_id}", response_model=Block)
-async def update_block_content(
+async def update_block_content_endpoint(
+    canvas_id: UUID,
     block_id: UUID,
     block_update: BlockUpdate,
-    # 'get_canvas_access' mengembalikan dict
-    access_info: dict = Depends(get_canvas_access)
+    access_info: AuthInfoDep, # <-- DIUBAH
+    embedding_service: EmbeddingServiceDep # <-- DIUBAH: Inject service
 ):
-    """
-    Memperbarui konten dari satu block tertentu.
-    """
-    # Ekstrak 'client' dari dict dependency
+    """Endpoint untuk memperbarui block. Jika konten berubah, embedding juga diperbarui."""
+    logger.info(f"Attempting to update block {block_id} in canvas {canvas_id}")
     authed_client = access_info["client"]
-    
-    # PERUBAHAN: Gunakan .model_dump(mode='json')
-    update_data = block_update.model_dump(mode='json', exclude_unset=True)
-    
-    # Teruskan 'authed_client' sebagai argumen pertama
-    updated_block = update_block(authed_client, block_id, update_data)
-    if not updated_block:
-        raise HTTPException(status_code=4.04, detail="Block not found.")
+    update_payload = block_update.model_dump(mode='json', exclude_unset=True)
+
+    if not update_payload:
+       logger.warning(f"Update requested for block {block_id} with no data.")
+       raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided.")
+
+    try:
+        # --- DIUBAH: Teruskan service ke fungsi query ---
+        updated_block = await update_block_and_embedding(
+            authed_client,
+            embedding_service, # <-- DIUBAH
+            block_id, 
+            update_payload
+        )
+    except Exception as e:
+        logger.error(f"Failed to update block {block_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if updated_block is None:
+        logger.error(f"Block {block_id} not found in canvas {canvas_id}.")
+        raise HTTPException(status_code=status.HTTP_44_NOT_FOUND, detail="Block not found.")
+
+    logger.info(f"Successfully updated block {block_id}")
     return updated_block
 
-@router.delete("/{block_id}", status_code=204)
-async def delete_a_block(
-    block_id: UUID, 
-    # 'get_canvas_access' mengembalikan dict
-    access_info: dict = Depends(get_canvas_access)
+@router.delete("/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_a_block_endpoint(
+    canvas_id: UUID,
+    block_id: UUID,
+    access_info: AuthInfoDep # <-- DIUBAH
 ):
-    """
-    Menghapus satu block tertentu.
-    """
-    # Ekstrak 'client' dari dict dependency
+    """Endpoint untuk menghapus block beserta embeddingnya."""
+    logger.info(f"Attempting to delete block {block_id} from canvas {canvas_id}")
     authed_client = access_info["client"]
-    
-    # Teruskan 'authed_client' sebagai argumen pertama
-    success = delete_block(authed_client, block_id)
+
+    # Fungsi ini juga harus dibuat non-blocking (asyncio.to_thread)
+    success = await delete_block_with_embedding(authed_client, block_id)
+
     if not success:
-        raise HTTPException(status_code=404, detail="Block not found.")
+       logger.error(f"Block {block_id} not found or failed to delete from canvas {canvas_id}.")
+       raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found or failed to delete.")
+
+    logger.info(f"Successfully deleted block {block_id}")
+    return None

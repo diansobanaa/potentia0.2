@@ -1,4 +1,6 @@
+# PARSE: 16-full-config-v2.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from uuid import UUID
 
 class Settings(BaseSettings):
     # Supabase
@@ -10,8 +12,16 @@ class Settings(BaseSettings):
 
     # Google Gemini
     GEMINI_API_KEY: str
+    # Model Utama (Besar) untuk Generasi Jawaban & Tool Calling
+    GEMINI_GENERATIVE_MODEL: str 
+    #Model Ringan & Cepat untuk Reranking
+    GEMINI_RERANKER_MODEL: str
+    GEMINI_ASESOR_MODEL: str
+    
+    # RAG Service
+    DEFAULT_ROLE_ID: UUID
+    SEEDING_ADMIN_KEY: str  
 
-    # PERBAIKAN: SUPER_MASTER_PROMPT dihapus dari sini dan akan dimuat dari database
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
 

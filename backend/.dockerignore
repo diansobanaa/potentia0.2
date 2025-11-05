@@ -1,0 +1,28 @@
+# .dockerignore
+
+# Versi control
+.git
+.gitignore
+
+# Documentation
+README.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# Node.js (jika ada)
+node_modules/
+npm-debug.log*

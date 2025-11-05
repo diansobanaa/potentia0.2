@@ -17,3 +17,6 @@ class Canvas(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+        

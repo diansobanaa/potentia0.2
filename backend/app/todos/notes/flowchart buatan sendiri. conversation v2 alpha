@@ -1,0 +1,146 @@
+---
+config:
+  layout: fixed
+---
+flowchart TD
+ subgraph s1["Prompt Requery, Konteks Judge oleh AI"]
+        n5@{ label: "<span></span><span></span><span style=\"white-space:\">Apakah ada sesi percakapan aktif?</span>" }
+        n6["Muat Data Context Aktif"]
+        n4@{ label: "<span></span><span></span><span style=\"white-space:\">Ambil 50 pesan terakhir user dan ai</span>" }
+        n7["Ambil Prompt utama untuk Ai Judge, MCP dan Tools"]
+        n52["Prompt Ai Judge: Semua Data dimasukan dalam prompt ini"]
+  end
+ subgraph s2["AI JUDGE KONTEKS, MCP, SQL"]
+        n8@{ label: "<span></span><span></span><span style=\"white-space:\">Ada Ambiguitas dalam Prompt?</span>" }
+        n9["Tanyakan User"]
+        n11["Query Cukup jelas?"]
+        n12["Final User Prompt"]
+        n13["Requeries Prompt"]
+        n14["Konteks judge: Continue, Switch, New"]
+        n15["MCP: Call SQL -&gt; List Summaries"]
+        n16["AI judge: Pilih Summary terbaik"]
+        n17["Context: selected_old_context"]
+        n18["Context: current_Active_thread"]
+        n19["Context: empty context, empty summary"]
+        n20@{ label: "<span></span><span></span><span style=\"white-space:\">{Selected context,</span><br><span style=\"white-space:\">is new session context,</span><br><span style=\"white-space:\">Final User Prompt}</span>" }
+  end
+ subgraph s3["Memory Manager"]
+        n21["Konteks Baru?"]
+        n22["Mulai Konteks baru + Summary Kosong"]
+        n23["Simpan data Baru"]
+        n24["tabel: Context, SummaryMemmory"]
+        n25["Ambil Konteks lama"]
+        n26["Ambil 50 pesan terakhir di konteks lama"]
+        n27["Tabel: Context"]
+        n28["Tabel: SUmmaryMemmory"]
+  end
+ subgraph s4["Async: Input data Setelah tampilkan jawaban ke user"]
+        n40["Input Ke tabel embedding Queue"]
+        n41@{ label: "<span></span><span></span><span style=\"white-space:\">Untuk dimasukan ke MessageEmbeddingAssistant,</span><br><span style=\"white-space:\">MessageEmbeddingUser</span>" }
+        n43["Input data Conversation ke database"]
+        n42["EmbeddingQueue"]
+        n44@{ label: "<span></span><span></span><span style=\"white-space:\">insert </span><br><span style=\"white-space:\">text user,</span><br><span style=\"white-space:\">requeried text user</span><br><span style=\"white-space:\">jawaban ai,</span><br><span style=\"white-space:\">konteks id</span>" }
+  end
+ subgraph s5["Final Prompt Components"]
+        n45@{ label: "<span></span><span></span><span style=\"white-space:\">final_user_prompt : Prompt yang telah di requery</span>" }
+        n46@{ label: "<span></span><span></span><span style=\"white-space:\">contexts:</span><br><span style=\"white-space:\">Summary,</span><br><span style=\"white-space:\">50 pesan terakhir di konteks lama</span>" }
+        n47@{ label: "<span></span><span></span><span style=\"white-space:\">instruction_memory: Gaya bicara, dll. (oleh user)</span><br><span style=\"white-space:\">Preperensi user</span>" }
+        n48@{ label: "<span></span><span></span><span style=\"white-space:\">system_prompt: Peran dan batasan Model</span>" }
+        n49@{ label: "<span></span><span></span><span style=\"white-space:\">developer_prompt: Instruksi Internal</span>" }
+        n50@{ label: "<span></span><span></span><span style=\"white-space:\">contextual_metadata:</span><br><span style=\"white-space:\">waktu, id, mode chat</span>" }
+        n51@{ label: "<span></span><span></span><span style=\"white-space:\">final_user_prompt : Prompt yang telah di requery</span>" }
+  end
+    n1(("User Kirim Pesan Baru")) --> n2@{ label: "<span></span><span></span><span style=\"white-space:\">Pre-Processor Membaca Pesan, Metadata</span>" }
+    n2 --> n3["Ambil Prompt Aturan Konteks Judge"]
+    n3 --> n5
+    n5 -- Ya --> n6
+    n6 --> n4
+    n5 -- Tidak --> n7
+    n4 --> n7
+    n8 -- Ya --> n9
+    n8 -- Tidak --> n11
+    n11 -- Ya --> n12
+    n11 -- Tidak --> n13
+    n13 --> n12
+    n12 --> n14
+    n14 -- Switch --> n15
+    n15 --> n16
+    n16 --> n17
+    n14 -- Continue --> n18
+    n14 -- New --> n19
+    n19 --> n20
+    n18 --> n20
+    n17 --> n20
+    n20 --> n21 & n45
+    n21 -- Ya --> n22
+    n22 --> n23 & n29["Ambil Prompt active dari InstructionMemmory"] & n46
+    n23 --> n24
+    n21 -- Tidak --> n25
+    n25 --> n26
+    n27 --> n25
+    n26 --> n29 & n46
+    n28 --> n26
+    n30["Tabel: InstructionMemmory"] --> n29
+    n29 --> n32["Ambil Prompt active dari InstructionMemmory"] & n47
+    n33["Tabel: SystemPrompt"] --> n32
+    n32 --> n34["Prompt Akhir SIap Dikirim ke Model Utama"] & n48
+    n34 --> n36["Kirim Ke model"]
+    n36 --> n35["Model Generate Response"]
+    n35 --> n37["Sistem menerima respons"]
+    n37 --> n38@{ label: "<span></span><span></span><span style=\"white-space:\">Post-Processor melakukan formatting &amp; filter content</span>" }
+    n38 --> n39@{ label: "<span></span><span></span><span style=\"white-space:\">Tampilkan jawaban ke user</span>" } & n40
+    n40 --> n41 & n43
+    n41 --> n42
+    n43 --> n44
+    n45 --> n34
+    n46 --> n34
+    n47 --> n34
+    n48 --> n34
+    n49 --> n34
+    n50 --> n34
+    n51 --> n34
+    n9 --> n39
+    n7 --> n52
+    n52 --> n8
+    n53["Tabel Context: {context_id, conversation_id, label, status}"] --> n6
+    n54["Tabel SummaryMemmory: {summary_id, context_id, summary_text, token_count}"] --> n6
+    n55["Tabel Messages: {context_id, role, content, model_used, token_count} where context_id = Context.context_id"] --> n4
+    n5@{ shape: diam}
+    n6@{ shape: rect}
+    n4@{ shape: rect}
+    n7@{ shape: event}
+    n52@{ shape: event}
+    n8@{ shape: diam}
+    n11@{ shape: diam}
+    n12@{ shape: rounded}
+    n14@{ shape: decision}
+    n16@{ shape: rect}
+    n17@{ shape: rect}
+    n20@{ shape: rounded}
+    n21@{ shape: diam}
+    n24@{ shape: db}
+    n27@{ shape: das}
+    n28@{ shape: das}
+    n41@{ shape: text}
+    n42@{ shape: cyl}
+    n44@{ shape: cyl}
+    n45@{ shape: rounded}
+    n46@{ shape: rounded}
+    n47@{ shape: rounded}
+    n48@{ shape: rounded}
+    n49@{ shape: rounded}
+    n50@{ shape: rounded}
+    n51@{ shape: rounded}
+    n2@{ shape: rect}
+    n30@{ shape: das}
+    n32@{ shape: rect}
+    n33@{ shape: das}
+    n34@{ shape: rounded}
+    n36@{ shape: in-out}
+    n35@{ shape: tag-proc}
+    n37@{ shape: out-in}
+    n38@{ shape: rect}
+    n39@{ shape: circle}
+    n53@{ shape: das}
+    n54@{ shape: das}
+    n55@{ shape: das}

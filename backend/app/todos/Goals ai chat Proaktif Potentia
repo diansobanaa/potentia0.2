@@ -1,0 +1,111 @@
+Tentu. Ini adalah To-Do List lengkap yang telah kita susun, digabungkan menjadi satu rencana langkah demi langkah untuk mencapai *goal* Anda.
+
+---
+
+## 🎯 GOAL UTAMA
+
+Mencapai Asisten AI (Potentia) yang profesional, akurat, dan kontekstual, setara dengan model top (ChatGPT/Claude). AI ini harus mampu:
+1.  **Memahami Peran:** Mengadopsi 9 persona (Analis, Editor, CEO, dll.) secara dinamis.
+2.  **Memiliki Ingatan (RAG Riwayat):** Menggunakan riwayat percakapan (`Messages`) secara akurat.
+3.  **Memahami Konteks (RAG Canvas):** Menggunakan data dari `Blocks` dan `Canvas` secara holistik (lintas dokumen).
+4.  **Berinteraksi Alami:** Berkomunikasi secara *user-centric*, menyembunyikan detail teknis, dan menawarkan alur "Tawarkan simpan ke canvas".
+5.  **Transparan:** Memberikan *feedback* "Thinking...".
+
+---
+Tentu. Ini adalah To-Do List (Revisi V4) yang telah diperbarui dengan deskripsi mendetail untuk setiap langkah, dan yang terpenting, **mengutamakan perubahan arsitektur fundamental (Chat Holistik)** seperti yang Anda minta.
+
+---
+
+## 📝 TO-DO LIST: Membangun Potentia (Asisten Holistik)
+
+### 🎯 FASE 1: Bangun Fondasi RAG Holistik & Stabil
+
+**Goal:** Mengubah arsitektur RAG dari "terisolasi" (per-canvas) menjadi "holistik" (lintas-canvas) dan memperbaiki akurasi RAG inti (Ingatan & Peran).
+
+* **[done] 1.1. Konsolidasi *Endpoint* (Python)**
+    * **Tugas:** Menghapus arsitektur *chat* terisolasi yang lama (Opsi 1).
+    * **Aksi:** Buka `api.py` atau `conversations.py`. Hapus (atau nonaktifkan) *router* untuk `/canvas/{canvas_id}/send`. Jadikan `/global-chat/send` (atau ganti namanya menjadi `/chat/send`) sebagai **satu-satunya** *endpoint* percakapan RAG.
+
+* **[done] 1.2. Modifikasi RAG Blok (SQL Holistik)**
+    * **Tugas:** Mengubah RPC `find_relevant_blocks` agar bisa mencari di *semua* *canvas* milik pengguna (mengandalkan RLS), bukan hanya satu `canvas_id`.
+    * **Aksi (SQL Editor):**
+        1.  `DROP FUNCTION IF EXISTS public.find_relevant_blocks(...)` (Hapus RPC lama yang pakai `canvas_id`).
+        2.  `CREATE OR REPLACE FUNCTION find_relevant_blocks(query_embedding public.app_vector, ...)` (`PARSE: 92...` Bagian 3):
+            * **Hapus** parameter `query_canvas_id`.
+            * Pastikan ia `JOIN "Canvas" c` untuk mendapatkan `canvas_title_result` (agar AI tahu blok ini dari *canvas* mana).
+            * **Pastikan** RLS Supabase Anda aktif di tabel `Blocks` dan/atau `Canvas` sehingga fungsi ini secara otomatis aman.
+
+* **[done] 1.3. Perbarui *Backend* (Python RAG Blok)**
+    * **Tugas:** Menyambungkan kode Python ke RPC SQL holistik yang baru.
+    * **Aksi (`RagRepository`):** Perbarui *interface* `IRagRepository` dan *method* `find_relevant_blocks` di `SupabaseRagRepository` agar memanggil RPC baru (tanpa parameter `canvas_id`).
+    * **Aksi (`AiAgentService`):** Perbarui *tool* `_execute_find_blocks` agar tidak lagi bergantung pada `canvas_id` (ia akan menggunakan `authed_client` yang di-inject ke *repository* untuk RLS).
+
+* **[done] 1.4. Perbaiki RAG Ingatan (SQL Riwayat)**
+    * **Tugas:** Memperbaiki tes "ingat angka" yang gagal (RAG tidak menemukan hasil).
+    * **Aksi (SQL Editor):**
+        1.  `DROP FUNCTION IF EXISTS public.find_relevant_history(...)`.
+        2.  Jalankan `CREATE OR REPLACE FUNCTION find_relevant_history(...)` (`PARSE: 81...`):
+            * Turunkan `match_threshold` ke `0.50` (lebih longgar).
+            * Naikkan `match_count` ke `5`.
+            * Pastikan `ORDER BY m.timestamp DESC` (atau `m.created_at`).
+
+* **[done] 1.5. Perbaiki RAG Peran (SQL Peran)**
+    * **Tugas:** Memperbaiki RAG Peran agar tidak selalu memilih *default*.
+    * **Aksi (SQL Editor):**
+        1.  `DROP FUNCTION IF EXISTS public.find_relevant_role_id(...)`
+
+* **[ ] 1.7. Validasi Fase 1**
+    * **Tugas:** Memastikan semua RAG inti berfungsi dalam arsitektur holistik.
+    * **Aksi:** Restart server (`docker-compose down && docker-compose up -d --build`).
+    * **Aksi (Tes):** Uji Skenario Ingatan ("ingat 1000"). Uji Skenario Peran ("buatkan ringkasan"). Uji Skenario RAG Blok Holistik ("cari X di *semua* canvas saya").
+
+---
+
+### 🎨 FASE 2: Penyempurnaan UX & Persona (Tampilan Profesional)
+
+**Goal:** Membuat AI berbicara alami, tidak membocorkan detail teknis, dan memberikan *feedback* "Thinking...".
+
+* **[ ] 2.1. Implementasi *System Prompt* Alami**
+    * **Tugas:** Mengajari AI cara berinteraksi secara profesional (tidak bocor, *user-centric*).
+    * **Aksi:** Perbarui file `app/prompts/system_instruction.py` dengan *prompt* `DEFAULT_SYSTEM_INSTRUCTION` versi `PARSE: 80` (fokus pada kerahasiaan *tools*, alur "tawarkan simpan", dan penanganan *error* alami).
+* **[ ] 2.2. Implementasi "Thinking..." (Transparansi)**
+    * **Tugas:** Memberi *feedback* instan kepada pengguna bahwa AI sedang bekerja.
+    * **Aksi (Backend):** Ubah *endpoint* `/global-chat/send` agar mengembalikan `StreamingResponse` (bukan `JSONResponse`).
+    * **Aksi (Backend):** Buat *async generator* `stream_rag_response` (`PARSE: 83...`) yang pertama-tama meng-`yield` `{"type": "status", "content": "Thinking..."}` dan kemudian (setelah RAG selesai) meng-`yield` `{"type": "chat", ...}`.
+    * **Aksi (Frontend):** Perbarui *frontend* untuk menangani *stream* `ndjson` dan menampilkan status "Thinking...".
+
+---
+
+### 🚀 FASE 3: Implementasi RAG Canggih (Meniru AI Besar)
+
+**Goal:** Meningkatkan akurasi RAG holistik yang sudah berfungsi.
+
+* **[ ] 3.1. Implementasi *Hierarchical RAG* (Canvas Summaries)**
+    * **Tugas:** Mengoptimasi RAG Blok Holistik (Fase 1.1) agar tidak mencari di *semua* blok (yang lambat), tetapi mencari di ringkasan *canvas* terlebih dahulu.
+    * **Aksi:** Buat `summary_embedding` di tabel `Canvas`. Buat RPC `find_relevant_canvases`. Modifikasi *tool* RAG Blok agar mencari *canvas* dulu, baru mencari blok di *dalam* *canvas* yang relevan.
+* **[ ] 3.2. Implementasi *Reranking***
+    * **Tugas:** Meningkatkan akurasi hasil RAG dengan drastis.
+    * **Aksi:** Ubah RPC RAG untuk mengambil `match_count` besar (misal 50). Di `AiAgentService`, tambahkan panggilan ke API *Reranker* untuk mengurutkan ulang 50 hasil dan mengambil 5 terbaik.
+* **[ ] 3.3. Implementasi *Query Rewriting***
+    * **Tugas:** Memperbaiki *prompt* pengguna yang ambigu ("berapa angkanya?") sebelum dikirim ke RAG.
+    * **Aksi:** Tambahkan 1 panggilan AI di awal `get_gemini_response_with_tools` untuk menulis ulang `user_message` agar lebih baik untuk pencarian RAG.
+* **[ ] 3.4. Implementasi *Hybrid Search* (BM25)**
+    * **Tugas:** Menggabungkan pencarian makna (vektor) dengan pencarian kata kunci (ejaan).
+    * **Aksi:** Tambahkan *index* `tsvector` di Supabase. Modifikasi RPC RAG untuk menjalankan kedua pencarian dan menggabungkan hasilnya (RRF).
+* **[ ] 3.5. Implementasi *Caching* (CAG)**
+    * **Tugas:** Mengurangi latensi dan biaya API.
+    * **Aksi:** Implementasikan *cache* (misal: Redis) untuk menyimpan jawaban umum.
+
+---
+
+### 🧪 FASE 4: Pengujian & Validasi KPI
+
+**Goal:** Memastikan semua 9 peran berfungsi dalam sistem holistik dan mengukur kinerja.
+
+* **[ ] 4.1. Uji Lintas Konteks:** Uji skenario `Hierarchical RAG` (misal: "Bandingkan *canvas* A dan B").
+* **[ ] 4.2. Ukur KPI:** Buat *test suite* dan ukur: Akurasi Ingatan (Grounding Score), Akurasi Peran, dan Latensi (P95).
+
+
+
+
+    Chain of Thought (CoT)
