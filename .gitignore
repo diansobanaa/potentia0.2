@@ -1,0 +1,46 @@
+# Python environments
+venv/
+.venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+build/
+dist/
+
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secret / env
+.env
+.env.* 
+
+# Tests / notebooks
+.ipynb_checkpoints/
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Misc
+*.log
+*.sqlite3
+.cache/
+pip-log.txt
+.wheelhouse/
+
+# Large or generated (optional)
+node_modules/
+*.pyc
