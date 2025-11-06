@@ -238,3 +238,12 @@ try:
 except Exception as e:
     # Log jika terjadi error saat rebuild, tapi jangan crash aplikasi
     print(f"Warning: Failed to rebuild PaginatedConversationListResponse model: {e}")
+
+
+
+class ConversationTitleUpdate(BaseModel):
+    """
+    Skema payload untuk endpoint PATCH [PATCH /chat/conversations/{id}]
+    yang digunakan untuk memperbarui judul percakapan secara manual.
+    """
+    title: str = Field(..., description="Judul baru untuk percakapan.", min_length=1, max_length=150)

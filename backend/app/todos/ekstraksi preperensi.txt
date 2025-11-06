@@ -11,3 +11,6 @@ Inti dari arsitektur ini adalah alur asynchronous untuk memisahkan tugas menjawa
 Secara bersamaan (di background), Sistem Python akan mengambil transkrip percakapan (prompt pengguna dan jawaban AI) dan mengirimkannya ke endpoint AI kedua yang terpisah. Tugas endpoint kedua ini adalah khusus untuk menganalisis teks dan mengekstrak preferensi dalam format JSON yang terstruktur.
 
 JSON yang dihasilkan oleh endpoint analisis ini wajib memiliki skema yang jelas untuk disimpan ke database. Skema minimal harus mencakup: type (tipe data: fact, interest, goal, dislike), category (kategori umum: work, hobbies, food, dll.), topic (topik spesifik), detail (detail lebih lanjut), confidence_score (seberapa yakin AI dengan ekstraksi ini), dan source_text (teks asli sebagai bukti). Sistem juga perlu strategi untuk menangani conflict update (misal: menimpa data lama dengan data baru berdasarkan timestamp) dan alur untuk menangani preferensi eksplisit (saat pengguna secara gamblang meminta AI mengingat sesuatu).
+
+
+DONE

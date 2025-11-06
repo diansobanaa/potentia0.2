@@ -51,18 +51,12 @@ Skenario 3: Pengguna memindahkan Block B ke posisi paling bawah (di bawah C).
     y_order_baru = 2.0 + 1.0 = 3.0
     Panggilan API: PATCH /.../blocks/{uuid-B} dengan body: {"y_order": 3.0}Database Sekarang: A (0.75), C (2.0), B (3.0)Keuntungan Arsitektur Ini    Performa Tinggi: Memindahkan satu item hanya membutuhkan satu panggilan API (PATCH) dan satu operasi UPDATE di database, tidak peduli seberapa besar daftarnya.    Logika Backend Sederhana: Backend Anda tetap "bodoh". Ia tidak perlu tahu tentang list atau reordering, ia hanya tahu cara memperbarui satu block. Ini membuat kode di endpoints/blocks.py dan queries/block_queries.py (yang ada di Canvas) sangat bersih.    Tangguh: Karena kita menggunakan float, kita bisa terus membagi dua index untuk waktu yang sangat lama sebelum kehabisan presisi (1.0, 1.5, 1.25, 1.125, 1.0625, ...).
 
-docker-compose logs -f potentia
 
-=> BAgaimana cara render block dari teks gemini ke canvas
+=> BAgaimana cara render block dari teks gemini ke canvas [CARI TAHU][TUGAS SELANJUTNYA]
 
 
 todo malam ini 24 otktober
 membuat logika konversasi dengan AI
-    pastikan setiap vector embedding menggunakan vector(768) agar cocok dengan model Google. [done]
-    merubah tabel yang sudah ada ke struktur baru {Canvas, Block} struktur sudah siap di figma (Done)
-    membuat tabel baru  {CanvasEmbedding, BlockEmbedding, } struktur sudah siap di figma (Done)
-    membuat tabel baru system_prompts menggantikan supermasterprompt. struktur sudah siap di figma (DOne)
-    membuat tabel Roles, MasterPrompts, RolesEmbedding. struktur sudah siap di figma (Done)
 
     membuat tabel embedding untuk tabel Messages. buat ulang dari konsep abstrak. (done)
 
@@ -94,8 +88,7 @@ membuat logika konversasi dengan AI
             find_relevant_history [done]
         Merumuskan Prompt Global (Super Master Prompt): Teks untuk tabel SystemPrompts [done] sementara untuk kebutuhan mvp [done]
         Contoh Prompt Peran (Master Prompt Anak): Setidaknya satu [done] sementara untuk kebutuhan mvp [done]
-        Menulis Logika Backend Percakapan RAG(FastAPI)
-        Menjalankan Skrip SQL di Supabase
+        Menulis Logika Backend Percakapan RAG(FastAPI)[DONE]
         Membuat endpoint dengan logika all in one untuk mengisi tabel system_prompts, Roles, RolesEmbedding, MasterPrompts. (sementara) [done]
         Mengisi tabel system_prompts, Roles, RolesEmbedding, MasterPrompts. [done]
         tambah list type block ini "msg": "Input should be 'text', 'task_item', 'heading_1', 'heading_2', 'image' or 'code'" + numbered_list item dll
@@ -104,9 +97,17 @@ membuat logika konversasi dengan AI
             add_message backend\app\db\queries\conversation_queries.py (dipakai)
             save_message backend\app\db\repositories\memory_repository.py (belum dipakai)
 
+YANG SUDAH DIBUAT SAMPAI SEKARANG 06 NOV 25
+- PERRCAKAPAN DENGAN 50 HISTORY PERCAKAPAN, PREFERENSI SEMANTIK DAN PREPERENSI User
+- CRUD Profil Pengguna: PATCH /api/v1/auth/me untuk edit nama, email, dan no. hp.
+- CRUD Canvas (Paginasi): GET /canvases/workspace/{id} dan GET /canvases/personal dengan pagination.
+- CRUD Blocks: Endpoint penuh untuk POST, GET, PATCH, DELETE blocks.
+- Arsitektur Chat Hybrid:
+--     POST /api/v1/chat: Endpoint JSON utama untuk mengirim pesan.
+--     GET /stream/{id}/title: Endpoint streaming ndjson untuk judul otomatis.
+- CRUD Judul Manual: PATCH /chat/conversations/{id} untuk edit judul secara manual.
+
 Buat sistem schedule
-
-
 
 Belajar RAG
 Belajar MCP
@@ -114,45 +115,104 @@ Belajar multi agent
 
 ada kalimat Sebagai Stratega Bisnis (CEO) dalam output. Buat lebih user center melalui systemprompt
 
-ouput kedua:
-Berdasarkan permintaan Anda untuk analisis SWOT awal untuk ide aplikasi pemandu wisata lokal, saya akan menyusun kerangka kerja strategis sebagai seorang CEO.\n\nNamun, karena hasil dari pemanggilan alat `find_relevant_blocks_from_canvas` tidak mengembalikan konten spesifik mengenai ide aplikasi tersebut, saya akan membuat analisis SWOT **generik** berdasarkan asumsi umum tentang aplikasi pemandu wisata lokal. Mohon berikan detail spesifik ide Anda jika Anda ingin analisis yang lebih tajam.\n\nBerikut adalah analisis SWOT awal untuk ide aplikasi pemandu wisata lokal:\n\n### Analisis SWOT Awal (Aplikasi Pemandu Wisata Lokal)\n\n| Kategori | Faktor | Implikasi Strategis |\n| :--- | :--- | :--- |\n| **Strengths (Kekuatan)** | **Daya Tarik Lokal Mendalam** | Potensi menawarkan pengalaman otentik yang tidak dapat ditiru oleh platform besar (misalnya, tur niche, cerita lokal). Ini membangun keunggulan diferensiasi. |\n| | **Model Bisnis Fleksibel** | Potensi untuk monetisasi melalui komisi tur, langganan premium untuk pemandu, atau iklan yang sangat tertarget. |\n| **Weaknesses (Kelemahan)** | **Ketergantungan pada Kualitas Pemandu** | Kualitas pengalaman pengguna sangat bergantung pada *user-generated content* (UGC) atau perekrutan pemandu yang ketat. Skalabilitas kualitas sulit dijaga. |\n| | **Akses Pasar Awal yang Terbatas** | Membutuhkan investasi pemasaran signifikan untuk membangun basis pengguna awal di kota/wilayah target sebelum mencapai efek jaringan. |\n| **Opportunities (Peluang)** | **Pertumbuhan *Experiential Tourism*** | Tren wisatawan global saat ini beralih dari sekadar melihat ke *mengalami*. Aplikasi ini berada di jalur tren makro yang tepat. |\n| | **Integrasi Teknologi Baru** | Potensi untuk mengintegrasikan AR/VR untuk pratinjau tur atau menggunakan AI untuk personalisasi rute secara *real-time*. |\n| **Threats (Ancaman)** | **Kompetitor Dominan** | Platform pemesanan besar (misalnya TripAdvisor, Airbnb Experiences) yang sudah memiliki basis pengguna dan kepercayaan merek yang mapan. |\n| | **Regulasi Lokal** | Potensi adanya regulasi kota/negara terhadap operator tur digital yang dapat membatasi operasional atau memerlukan biaya lisensi tinggi. |\n\n**Rekomendasi Strategis Awal:**\n\n1.  **Fokus Diferensiasi:** Jangan bersaing pada harga atau kuantitas. Fokuskan strategi go-to-market pada **pengalaman eksklusif** yang tidak tersedia di platform pesaing.\n2.  **Mitigasi Risiko Kualitas:** Segera bangun sistem kurasi atau rating pemandu yang sangat ketat untuk memastikan **keandalan layanan** sebagai fondasi kepercayaan merek.\n\nApa langkah Anda selanjutnya terkait pemetaan kompetitor atau rencana akuisisi pengguna?
-Pemanggilan alat `find_relevant_blocks_from_canvas` tidak mengembalikan konten spesifik mengenai ide. rubah system prompt untuk tidak mengeluarkan output tentang internal kita.
 
-selalu 
-{
-  "detail": {
-    "status": "error",
-    "message": "Object of type UUID is not JSON serializable",
-    "conversation_id": "ee8b8ed8-f187-47a9-8138-0e3b8cff2bf4"
-  }
-}
-harus input 2 kali baru bisa
+ENDPOINT YANG HARUS DIBUAT
+1. Resource: User & Authentication
 
-ada error 
-{
-  "status": "error",
-  "message": "Kesalahan internal: list index out of range",
-  "metadata": {
-    "role_info": {
-      "role_id": "c9461e0a-4459-4605-a07e-7f0ac15e5a27",
-      "score": "0.63",
-      "prompt_used": true
-    }
-  },
-  "conversation_id": "ee8b8ed8-f187-47a9-8138-0e3b8cff2bf4"
-}
+Prefix: /api/v1/auth
 
-{
-  "status": "error",
-  "message": "Kesalahan internal: Could not convert `part.function_call` to text.",
-  "metadata": {
-    "role_info": {
-      "role_id": "c9461e0a-4459-4605-a07e-7f0ac15e5a27",
-      "score": "0.63",
-      "prompt_used": true
-    }
+    GET /me: (Sudah Ada) Mengambil detail profil pengguna yang sedang login.
 
+    PATCH /me: (DONE) Memperbarui detail pengguna (NAMA).
 
-  },
-  "conversation_id": "ee8b8ed8-f187-47a9-8138-0e3b8cff2bf4"
-}
+    PATCH /me: (Disarankan) Memperbarui detail pengguna (Preferensi).
+
+    (Catatan: POST /login, POST /register, POST /logout biasanya ditangani langsung oleh Supabase di sisi klien, jadi tidak perlu di backend Anda).
+
+2. Resource: Workspaces
+
+Prefix: /api/v1/workspaces
+
+    POST /: (Sudah Ada) Membuat workspace baru.
+
+    GET /: (Sudah Ada) Mendapat daftar semua workspace milik pengguna.
+
+    GET /{workspace_id}: (DONE) Mendapat detail satu workspace spesifik.
+
+    PATCH /{workspace_id}: (DONE) Memperbarui workspace (misal: ganti nama).
+
+    DELETE /{workspace_id}: (DONE) Menghapus workspace.
+
+3. Resource: Workspace Members
+
+Prefix: /api/v1/workspaces/{workspace_id}/members
+
+    GET /: (Disarankan) Mendapat daftar anggota dalam satu workspace.
+
+    POST /: (Disarankan) Mengundang/menambahkan anggota baru ke workspace.
+
+    PATCH /{user_id}: (Disarankan) Mengubah peran anggota (misal: dari 'member' ke 'admin').
+
+    DELETE /{user_id}: (Disarankan) Mengeluarkan anggota dari workspace.
+
+4. Resource: Canvases
+
+Prefix: /api/v1/canvases
+
+    POST /workspace/{workspace_id}: (Sudah Ada) Membuat canvas baru di dalam workspace.
+
+    POST /personal: (Sudah Ada) Membuat canvas pribadi baru.
+
+    GET /workspace/{workspace_id}: (Sudah Ada) Mendapat daftar canvas (paginasi) di workspace.
+
+    GET /personal: (Sudah Ada) Mendapat daftar canvas (paginasi) pribadi.
+
+    GET /{canvas_id}: (Disarankan) Mendapat data detail satu canvas (termasuk judul, ikon, dll).
+
+    PATCH /{canvas_id}: (Disarankan) Memperbarui detail canvas (judul, ikon, arsip).
+
+    DELETE /{canvas_id}: (Disarankan) Menghapus atau mengarsipkan canvas.
+
+5. Resource: Blocks
+
+Prefix: /api/v1/canvases/{canvas_id}/blocks
+
+    POST /: (Sudah Ada) Membuat block baru di dalam canvas.
+
+    GET /: (Sudah Ada) Mendapat semua block di dalam canvas.
+
+    PATCH /{block_id}: (Sudah Ada) Memperbarui konten atau properti block.
+
+    DELETE /{block_id}: (Sudah Ada) Menghapus block.
+
+    PATCH /: (Opsional) Endpoint bulk update untuk mengubah urutan (y_order) beberapa block sekaligus.
+
+6. Resource: Chat & Conversations
+
+Prefix: /api/v1/chat
+
+    POST /: (Sudah Ada) Mengirim pesan chat baru (non-streaming).
+
+    GET /conversations-list: (Sudah Ada) Mendapat daftar percakapan (paginasi).
+
+    PATCH /conversations/{conversation_id}: (Sudah Ada) Memperbarui judul percakapan (manual).
+
+    GET /{conversation_id}/messages: (Sudah Ada) Mendapat riwayat pesan (paginasi).
+
+    GET /stream/{conversation_id}/title: (Sudah Ada) Stream judul otomatis.
+
+    DELETE /conversations/{conversation_id}: (Disarankan) Menghapus percakapan.
+
+7. Resource: Schedules
+
+Prefix: /api/v1/workspaces/{workspace_id}/schedules
+
+    POST /: (Disarankan) Membuat jadwal baru. (Kueri create_schedule sudah ada).
+
+    GET /: (Sudah Ada) Mendapat daftar jadwal di workspace.
+
+    GET /{schedule_id}: (Disarankan) Mendapat detail satu jadwal.
+
+    PATCH /{schedule_id}: (Disarankan) Memperbarui jadwal.
+
+    DELETE /{schedule_id}: (Disarankan) Menghapus jadwal.

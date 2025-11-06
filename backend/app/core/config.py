@@ -1,4 +1,5 @@
 # PARSE: 16-full-config-v2.py
+# backend\app\core\config.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from uuid import UUID
 
@@ -18,6 +19,10 @@ class Settings(BaseSettings):
     GEMINI_RERANKER_MODEL: str
     GEMINI_ASESOR_MODEL: str
     
+    # Model Deepseek untuk Pembaruan judul Conversation
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_API_URL: str = "https://api.deepseek.com/chat/completions"
+
     # RAG Service
     DEFAULT_ROLE_ID: UUID
     SEEDING_ADMIN_KEY: str  

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 
 class CanvasCreate(BaseModel):
@@ -17,6 +17,16 @@ class Canvas(BaseModel):
     
     class Config:
         from_attributes = True
+        populate_by_name = True 
 
 
-        
+class PaginatedCanvasListResponse(BaseModel):
+    """
+    Model respons untuk daftar canvas yang dipaginasi.
+    Digunakan oleh GET /canvases/workspace/{id} dan GET /canvases/personal.
+    """
+    items: List[Canvas]
+    total: int
+    page: int
+    size: int
+    total_pages: int

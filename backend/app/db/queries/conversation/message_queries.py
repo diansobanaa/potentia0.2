@@ -4,7 +4,7 @@
 import logging
 import asyncio # Diperlukan untuk perbaikan 'to_thread'
 from uuid import UUID
-from typing import List, Dict, Any, Literal, Optional
+from typing import List, Dict, Any, Literal, Optional, Tuple
 from supabase import Client
 from postgrest import APIResponse
 from app.core.exceptions import DatabaseError
@@ -136,3 +136,51 @@ def get_messages_by_context_id(
     except Exception as e:
         logger.error(f"Gagal mengambil pesan untuk context {context_id}: {e}", exc_info=True)
         raise DatabaseError(f"Error retrieving messages: {str(e)}")
+    
+
+def get_first_turn_messages(
+    authed_client: Client,
+    user_id: UUID,
+    conversation_id: UUID
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Mengambil pesan 'user' pertama dan pesan 'assistant' pertama
+    dari sebuah conversation_id spesifik.
+    """
+    try:
+        user_msg = None
+        ai_msg = None
+
+        # Ambil pesan user pertama
+        user_response: APIResponse = authed_client.table("messages") \
+            .select("content") \
+            .eq("user_id", str(user_id)) \
+            .eq("conversation_id", str(conversation_id)) \
+            .eq("role", "user") \
+            .order("created_at", desc=False) \
+            .limit(1) \
+            .maybe_single() \
+            .execute()
+        
+        if user_response and user_response.data:
+            user_msg = user_response.data.get("content")
+
+        # Ambil pesan AI pertama
+        ai_response: APIResponse = authed_client.table("messages") \
+            .select("content") \
+            .eq("user_id", str(user_id)) \
+            .eq("conversation_id", str(conversation_id)) \
+            .eq("role", "assistant") \
+            .order("created_at", desc=False) \
+            .limit(1) \
+            .maybe_single() \
+            .execute()
+        
+        if ai_response and ai_response.data:
+            ai_msg = ai_response.data.get("content")
+
+        return user_msg, ai_msg
+
+    except Exception as e:
+        logger.error(f"Gagal mengambil pesan pertama untuk convo {conversation_id}: {e}", exc_info=True)
+        return None, None

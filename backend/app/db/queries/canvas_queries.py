@@ -1,99 +1,120 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Any # <-- Perbarui impor
 from uuid import UUID
+from supabase import Client # <-- Tambahkan impor
+from postgrest import APIResponse # <-- Tambahkan impor
+import logging # <-- Tambahkan impor
 
-# HAPUS: from app.db.supabase_client import get_supabase_client
-# HAPUS: supabase = get_supabase_client()
-# Kita tidak lagi menggunakan klien global (anonim). 
-# 'authed_client' (klien yang sudah diautentikasi per permintaan) 
-# akan diteruskan ke setiap fungsi dari lapisan 'dependencies'.
+logger = logging.getLogger(__name__) # <-- Tambahkan logger
 
-def create_canvas(authed_client, title: str, icon: str, workspace_id: Optional[UUID], creator_id: UUID, user_id: Optional[UUID]) -> Optional[dict]:
+def create_canvas(authed_client: Client, title: str, icon: str, workspace_id: Optional[UUID], creator_id: UUID, user_id: Optional[UUID]) -> Optional[dict]:
     """
-    Membuat entri canvas baru di tabel 'Canvas'.
-    Menggunakan klien yang sudah diautentikasi untuk mematuhi RLS.
+    Membuat entri canvas baru di tabel 'Canvas'.  
     """
     payload = {"title": title, "icon": icon, "creator_user_id": str(creator_id)}
     if workspace_id: payload["workspace_id"] = str(workspace_id)
     if user_id: payload["user_id"] = str(user_id)
-        
-    # Menggunakan 'authed_client' memastikan query ini dijalankan 
-    # sebagai pengguna yang sudah login, bukan anonim.
+    
     response = authed_client.table("Canvas").insert(payload).execute() 
     return response.data[0] if response.data else None
 
-def get_canvases_in_workspace(authed_client, workspace_id: UUID) -> List[dict]:
+# --- FUNGSI LAMA 'get_canvases_in_workspace' DIGANTI DENGAN INI ---
+def get_canvases_in_workspace_paginated(
+    authed_client: Client, 
+    workspace_id: UUID, 
+    offset: int, 
+    limit: int
+) -> Tuple[List[Dict[str, Any]], int]:
     """
-    Mengambil daftar semua canvas yang terkait dengan workspace_id tertentu.
+    Mengambil daftar canvas di workspace dengan pagination dan total count.
     """
-    response = authed_client.table("Canvas").select("*").eq("workspace_id", str(workspace_id)).eq("is_archived", False).execute()
+    try:
+        # 1. Ambil data yang dipaginasi
+        list_response: APIResponse = authed_client.table("Canvas") \
+            .select("*") \
+            .eq("workspace_id", str(workspace_id)) \
+            .eq("is_archived", False) \
+            .order("updated_at", desc=True) \
+            .range(offset, offset + limit - 1) \
+            .execute()
+
+        # 2. Hitung total
+        count_response: APIResponse = authed_client.table("Canvas") \
+            .select("canvas_id", count="exact") \
+            .eq("workspace_id", str(workspace_id)) \
+            .eq("is_archived", False) \
+            .execute()
+        
+        data = list_response.data or []
+        total = count_response.count or 0
+        return data, total
     
-    # Selalu kembalikan list (daftar kosong jika tidak ada) 
-    # untuk menghindari ResponseValidationError
-    return response.data if response.data else []
+    except Exception as e:
+        logger.error(f"Error paginating workspace canvases for {workspace_id}: {e}", exc_info=True)
+        return [], 0 # Kembalikan nilai aman jika error
 
-def get_user_personal_canvases(authed_client, user_id: UUID) -> List[dict]:
+# --- FUNGSI LAMA 'get_user_personal_canvases' DIGANTI DENGAN INI ---
+def get_user_personal_canvases_paginated(
+    authed_client: Client, user_id: UUID, offset: int, limit: int
+) -> Tuple[List[Dict[str, Any]], int]:
     """
-    Mengambil daftar semua canvas pribadi milik user_id tertentu.
+    Mengambil daftar canvas pribadi user dengan pagination dan total count.
     """
-    response = authed_client.table("Canvas").select("*").eq("user_id", str(user_id)).eq("is_archived", False).execute()
-    return response.data if response.data else []
+    try:
+        # 1. Ambil data yang dipaginasi
+        list_response: APIResponse = authed_client.table("Canvas") \
+            .select("*") \
+            .eq("user_id", str(user_id)) \
+            .eq("is_archived", False) \
+            .order("updated_at", desc=True) \
+            .range(offset, offset + limit - 1) \
+            .execute()
 
-def get_canvas_by_id(authed_client, canvas_id: UUID) -> Optional[dict]:
+        # 2. Hitung total
+        count_response: APIResponse = authed_client.table("Canvas") \
+            .select("canvas_id", count="exact") \
+            .eq("user_id", str(user_id)) \
+            .eq("is_archived", False) \
+            .execute()
+        
+        data = list_response.data or []
+        total = count_response.count or 0
+        return data, total
+    except Exception as e:
+        logger.error(f"Error paginating personal canvases for {user_id}: {e}", exc_info=True)
+        return [], 0 # Kembalikan nilai aman jika error
+
+def get_canvas_by_id(authed_client: Client, canvas_id: UUID) -> Optional[dict]:
     """
     Mengambil satu data canvas berdasarkan ID-nya.
-    (Ini adalah fungsi yang memperbaiki TypeError Anda sebelumnya)
+   
     """
     response = authed_client.table("Canvas").select("*").eq("canvas_id", str(canvas_id)).single().execute()
     return response.data if response.data else None
 
-# -----------------------------------------------------------------
-# Fungsi-fungsi ini sepertinya milik 'block_queries.py',
-# tapi jika mereka ada di sini, kita juga perbaiki di sini.
-# -----------------------------------------------------------------
-
+# ... (sisa fungsi 'get_blocks_in_canvas' dll. tetap sama) ...
 def get_blocks_in_canvas(authed_client, canvas_id: UUID) -> List[dict]:
-    """
-    Mengambil semua block yang terkait dengan canvas_id tertentu.
-    """
     response = authed_client.table("Blocks").select("*").eq("canvas_id", str(canvas_id)).order("y_order").execute()
-    
-    # Selalu kembalikan list (daftar kosong jika tidak ada)
     return response.data if response.data else []
 
 def update_block(authed_client, block_id: UUID, update_data: dict) -> Optional[dict]:
-    """
-    Memperbarui data dari satu block tertentu.
-    """
     response = authed_client.table("Blocks").update(update_data).eq("block_id", str(block_id)).execute()
     return response.data[0] if response.data else None
 
 def delete_block(authed_client, block_id: UUID) -> bool:
-    """
-    Menghapus satu block tertentu.
-    """
     response = authed_client.table("Blocks").delete().eq("block_id", str(block_id)).execute()
     return len(response.data) > 0
 
 def get_all_accessible_canvases(authed_client, user_id: UUID) -> List[dict]:
-    """
-    Mengambil semua canvas yang bisa diakses user (pribadi + dari workspace).
-    Ini menjalankan beberapa query dan menggabungkannya.
-    """
+    # ... (Fungsi ini TIDAK diubah, karena tidak dipaginasi)
+    personal_canvases = get_user_personal_canvases_paginated(authed_client, user_id, 0, 1000)[0] # Ambil 1000
     
-    # 1. Ambil canvas pribadi (teruskan kliennya)
-    personal_canvases = get_user_personal_canvases(authed_client, user_id)
-    
-    # 2. Ambil canvas dari workspace di mana user adalah anggota (gunakan kliennya)
     workspace_memberships = authed_client.table("WorkspaceMembers").select("workspace_id").eq("user_id", str(user_id)).execute()
     workspace_ids = [m['workspace_id'] for m in workspace_memberships.data]
     
     workspace_canvases = []
     if workspace_ids:
-        # Gunakan 'authed_client' untuk query ini
         response = authed_client.table("Canvas").select("*").in_("workspace_id", workspace_ids).execute() 
         workspace_canvases = response.data if response.data else []
-        
-    # 3. Gabungkan keduanya
+    
     all_canvases = personal_canvases + workspace_canvases
     return all_canvases
-
