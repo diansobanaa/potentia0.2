@@ -114,3 +114,87 @@ Berikut adalah komponen inti dari *flowchart* "v2 alpha" yang menjadi fokus kita
     * **Deskripsi:** Ini adalah bagian dari RAG Kontekstual (n51). Tujuannya adalah agar AI secara dinamis memilih "Domain Prompt" (misal: "Analis Data", "Editor") menggunakan RPC `find_relevant_role_id` dan memasukkannya ke *prompt* akhir.
     * **Status: Belum Selesai.**
     * **Analisis Kode:** `ContextPacker` saat ini belum memanggil `find_relevant_role_id` dan masih menggunakan `developer_prompt.py` secara statis.
+
+## 📊 Status Fitur (Update per 7 November 2025)
+
+Bagian ini mencatat kemajuan implementasi CRUD API berdasarkan daftar di `TODO.txt`.
+
+### Resource 4: Canvases (✅ Selesai)
+
+Tujuan implementasi CRUD penuh untuk `canvases` telah tercapai. Logika keamanan inti telah diperbarui untuk mendukung arsitektur "Invite-Ready".
+
+* **Keamanan (`CanvasAccessDep`)**: Fondasi keamanan di `app/core/dependencies.py` telah berhasil di-refactor.
+    * `get_canvas_access` sekarang memeriksa 3 jalur akses: Pemilik Personal, Anggota Workspace, dan Undangan (Invite) via `CanvasAccess`.
+    * Ini memastikan bahwa semua endpoint yang menggunakan *dependency* ini secara otomatis mendukung logika berbagi/invite.
+    * `get_canvas_by_id` di `app/db/queries/canvas/canvas_queries.py` telah diperkuat dengan *fallback* `maybe_single()` untuk mencegah *crash* 404.
+
+* **`GET /{canvas_id}` (Detail)**: ✅ Selesai. Dilindungi oleh `CanvasAccessDep`.
+* **`PATCH /{canvas_id}/meta` (Update)**: ✅ Selesai.
+    * Endpoint `PATCH` generik telah diganti dengan endpoint `PATCH .../meta` yang lebih spesifik.
+    * Menggunakan model `CanvasMetaUpdate` dengan `ConfigDict(extra="forbid")` untuk validasi *payload* yang ketat (hanya `title` dan `icon`).
+* **`POST /{canvas_id}/archive` (Update)**: ✅ Selesai.
+* **`POST /{canvas_id}/restore` (Update)**: ✅ Selesai.
+    * Logika *update* status (`is_archived`) dipisah dari *update* metadata untuk desain API yang lebih bersih.
+* **`DELETE /{canvas_id}` (Delete)**: ✅ Selesai.
+    * Endpoint ini menangani *hard delete*.
+    * Memiliki *fallback* tangguh yang mengembalikan `409 Conflict` jika canvas masih memiliki `Blocks` (mencegah data yatim).
+
+### Resource 3.1: Canvas Members (✅ Selesai - Fase 1)
+
+Kita telah berhasil mengimplementasikan fitur inti untuk manajemen anggota canvas, yang melengkapi logika *invite* yang telah kita siapkan.
+
+* **Router Baru**: `app/api/v1/endpoints/canvas_members.py` telah dibuat dan diintegrasikan ke `api.py`.
+* **Logika Query (Performa Tinggi)**:
+    * Kita mengadopsi **Opsi 1 (Solusi RPC)** untuk performa tinggi.
+    * Fungsi SQL `get_canvas_members_detailed` telah dibuat untuk menggabungkan 3 sumber anggota (Owner, Workspace, Invite) di dalam database.
+    * `app/db/queries/canvas/canvas_member_queries.py` telah diimplementasikan untuk memanggil RPC tersebut, menggantikan logika Python yang "cerewet".
+* **`GET /canvases/{id}/members` (List)**: ✅ Selesai.
+    * Dilindungi oleh `CanvasAccessDep` (semua anggota bisa melihat).
+    * Secara efisien mengembalikan daftar anggota gabungan berkat RPC.
+* **`POST /canvases/{id}/members` (Invite)**: ✅ Selesai (Fase 1: Invite by `user_id`).
+    * Dilindungi oleh `CanvasAdminAccessDep` (hanya admin/owner yang bisa mengundang).
+    * Menggunakan `add_canvas_member` dengan logika `upsert` untuk menambah/memperbarui *role* anggota.
+    * Memiliki *fallback* `404 Not Found` jika `user_id` yang diundang tidak ada.
+
+#### Komentar untuk Selanjutnya (Fitur Tertunda)
+
+* **Invite by Email**: Endpoint `POST .../members` saat ini secara eksplisit mengembalikan `501 Not Implemented` untuk *invite* via `email`. Ini adalah langkah selanjutnya yang logis, yang akan melibatkan penggunaan tabel `CanvasInvitations` dan pengiriman email (seperti yang ada di `notification_service.py`).
+
+Kamu bisa temukan Schema DB di backend\app\db\schema.sql Untuk menentukan strategi fitur
+
+### Resource 3: Workspace Members (✅ Selesai - Fase 1)
+
+Kita telah berhasil mengimplementasikan CRUD penuh untuk manajemen anggota workspace. Logika bisnis inti telah diimplementasikan sesuai arahan: **semua penambahan anggota baru harus melalui alur "Invite-Only"** (memerlukan persetujuan), bukan penambahan langsung (direct add).
+
+* **File Router Baru**: `backend/app/api/v1/endpoints/workspace_members.py` telah dibuat dan diintegrasikan ke `api.py`.
+* **File Model Baru**: Skema Pydantic (`WorkspaceMemberInviteOrAdd`, `WorkspaceMemberUpdate`, dll.) telah dibuat di `backend/app/models/workspace.py`.
+
+#### Fitur & Logika yang Diimplementasikan:
+
+1.  **Keamanan (`WorkspaceAdminAccessDep`)**:
+    * Sebuah *dependency* keamanan baru (`get_workspace_admin_access`) telah dibuat di `backend/app/core/dependencies.py`.
+    * *Dependency* ini secara ketat melindungi endpoint `POST` (Invite), `PATCH` (Update Role), dan `DELETE` (Remove), dan hanya mengizinkan pengguna dengan *role* 'admin'.
+    * *Dependency* `get_current_workspace_member` (untuk `GET`) telah diperbaiki untuk menangani *fallback* `None` response dari Supabase dengan aman.
+
+2.  **`POST /` (Invite Member)**: ✅ Selesai.
+    * Endpoint ini sekarang menggunakan logika "Invite-Only" yang fleksibel.
+    * Admin dapat mengundang anggota baru baik via `user_id` (pengguna internal) maupun `email` (pengguna eksternal).
+    * Kedua alur tersebut sekarang memanggil fungsi `create_workspace_invitation`.
+    * **Perbaikan Bug**: *Bug* `violates not-null constraint "type"` telah diperbaiki. Fungsi `create_workspace_invitation` sekarang mengisi kolom `type` dengan benar (misal: 'EMAIL' atau 'USER_ID').
+    * **Fallback**: Kueri ini memiliki *fallback* tangguh untuk mencegah undangan duplikat (baik untuk `email` maupun `user_id` yang statusnya "pending" atau sudah menjadi anggota).
+
+3.  **`GET /` (List Members)**: ✅ Selesai.
+    * Dilindungi oleh `WorkspaceMemberDep` (semua anggota bisa melihat daftar).
+    * Menggunakan kueri `list_workspace_members` yang efisien dengan `JOIN` ke tabel `Users` untuk mengambil `name` dan `email`.
+
+4.  **`PATCH /{user_id}` (Update Role)**: ✅ Selesai.
+    * Dilindungi oleh `WorkspaceAdminAccessDep`.
+    * **Fallback**: Logika kueri `update_workspace_member_role` secara eksplisit **mencegah** seorang admin menurunkan *role* (demote) `owner_user_id` dari workspace.
+
+5.  **`DELETE /{user_id}` (Remove Member)**: ✅ Selesai.
+    * Dilindungi oleh `WorkspaceAdminAccessDep`.
+    * **Fallback**: Logika kueri `remove_workspace_member` secara eksplisit **mencegah** `owner_user_id` dihapus dari workspaceny-a sendiri.
+
+#### Komentar untuk Selanjutnya (Fitur Tertunda)
+
+* **Endpoint "Accept/Reject"**: Kita telah berhasil membuat alur "kirim undangan" (`POST /.../members`). Langkah berikutnya yang logis adalah membuat endpoint untuk *menerima* undangan tersebut (misal: `POST /invitations/workspace/respond`), yang akan memvalidasi `token` dan memindahkan pengguna dari `WorkspaceInvitations` ke `WorkspaceMembers`.

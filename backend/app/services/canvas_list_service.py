@@ -3,7 +3,7 @@ import asyncio
 from uuid import UUID
 from typing import List, Dict, Any, TYPE_CHECKING
 from app.models.canvas import Canvas, PaginatedCanvasListResponse
-from app.db.queries.canvas_queries import (
+from app.db.queries.canvas.canvas_queries import (
     get_canvases_in_workspace_paginated,
     get_user_personal_canvases_paginated
 )
