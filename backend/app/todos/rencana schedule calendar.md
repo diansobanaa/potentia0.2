@@ -432,3 +432,48 @@ Tujuan: Mengekspos logika ke frontend dengan 5 resource baru.
     [DONE] TODO-API-7 (Integrasi Router):
 
         Di backend/app/api/v1/api.py, impor dan daftarkan semua 5 router baru.
+
+FASE 5: (TAMBAHAN) REFACTOR 
+   TODO-RE-1 REFACTOR backend\app\db\queries\calendar\calendar_queries.py
+   TODO-RE-2 PINDAHKAN endpoints/: calendars.py, calendar_subscriptions.py, schedule_guests.py, schedules_api.py, views.py 
+
+
+## Struktur file (tree) dari semua file ini mencerminkan arsitektur "Calendar-Centric" dan pemisahan tanggung jawab (SoC).
+backend/
+├── app/
+│   ├── api/
+│   │   └── v1/
+│   │       ├── endpoints/
+│   │       │   ├── calendars.py                 # (BARU - TODO-API-2: Resource Kalender)
+│   │       │   ├── calendar_subscriptions.py      # (BARU - TODO-API-4: Resource Langganan)
+│   │       │   ├── schedule_guests.py             # (BARU - TODO-API-5: Resource Tamu)
+│   │       │   ├── schedules_api.py               # (BARU - TODO-API-3: Resource Acara)
+│   │       │   └── views.py                       # (BARU - TODO-API-6: Resource Tampilan)
+│   │       │
+│   │       └── api.py                           # (DIMODIFIKASI - TODO-API-7: Integrasi 5 router baru)
+│   │
+│   ├── core/
+│   │   ├── dependencies.py                  # (DIMODIFIKASI - TODO-DEP-1,2,3: Menambah Dep Keamanan Kalender)
+│   │   ├── scheduler.py                     # (BARU - TODO-SVC-1: Konfigurasi APScheduler + Redis)
+│   │   └── main.py                          # (DIMODIFIKASI - TODO-SVC-1: Integrasi Lifespan Scheduler)
+│   │
+│   ├── db/
+│   │   └── queries/
+│   │       └── calendar/
+│   │           └── calendar_queries.py      # (BARU - Fondasi Kueri untuk Fase 3 & 4)
+│   │
+│   ├── jobs/
+│   │   └── schedule_expander.py             # (BARU - TODO-SVC-2, 4, 5: Logika Ekspansi RRULE "MUST FIX")
+│   │
+│   ├── models/
+│   │   └── schedule.py                      # (DIGANTI TOTAL - TODO-MDL-1, 2, 3: 5 Model + 4 ENUM)
+│   │
+│   └── services/
+│       └── calendar/
+│           ├── calendar_service.py          # (BARU - TODO-API-2: Logika Bisnis Kalender)
+│           ├── freebusy_service.py          # (BARU - TODO-SVC-3: Logika Cache Redis Free/Busy)
+│           ├── guest_service.py             # (BARU - TODO-API-5: Logika Bisnis Tamu)
+│           ├── schedule_service.py          # (BARU - TODO-API-3: Logika Bisnis Acara & UTC)
+│           └── subscription_service.py      # (BARU - TODO-API-4: Logika Bisnis Sharing)
+│
+└── requirements.txt                         # (DIMODIFIKASI - Ditambah 'pytz' & 'python-dat
