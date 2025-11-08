@@ -1,31 +1,31 @@
-#backend\app\db\queries\conversation\conversation_list_queries.py
+# backend/app/db/queries/conversation/conversation_list_queries.py
+# (Diperbarui untuk AsyncClient native dan asyncio.gather)
+
 import logging
 from uuid import UUID
 from typing import List, Dict, Any, Tuple
-from supabase import Client
+# --- PERBAIKAN: Impor AsyncClient ---
+from supabase.client import AsyncClient
 from postgrest import APIResponse
 from app.core.exceptions import DatabaseError
+import asyncio # <-- [DITAMBAHKAN]
 
 logger = logging.getLogger(__name__)
 
-def get_user_conversations_paginated(
-    authed_client: Client,
+async def get_user_conversations_paginated(
+    authed_client: AsyncClient, # <-- Tipe diubah
     user_id: UUID,
     offset: int,
     limit: int
 ) -> Tuple[List[Dict[str, Any]], int]:
     """
-    Mengambil daftar conversation untuk user tertentu dengan pagination dan total count.
-    Menggunakan Supabase client.
-
-    Returns:
-        Tuple berisi (list_of_conversations, total_count).
+    (Async Native) Mengambil daftar conversation dengan pagination.
     """
     try:
-        # Query untuk mengambil data conversation yang dipaginasi
-        # Supabase menggunakan .range() untuk offset/limit. Range bersifat inklusif.
-        # Misal: offset=0, limit=20 -> range(0, 19)
-        list_response: APIResponse = authed_client.table("conversations") \
+        # --- PERBAIKAN: Optimasi dengan asyncio.gather ---
+        
+        # 1. Ambil data pesan yang dipaginasi (Tugas 1)
+        list_task = authed_client.table("conversations") \
             .select(
                 "conversation_id",
                 "title",
@@ -36,23 +36,28 @@ def get_user_conversations_paginated(
             .range(offset, offset + limit - 1) \
             .execute()
 
-        # Query untuk menghitung total keseluruhan conversation
-        # Menggunakan count="exact" adalah cara efisien di Supabase
-        count_response: APIResponse = authed_client.table("conversations") \
+        # 2. Hitung total pesan (Tugas 2)
+        count_task = authed_client.table("conversations") \
             .select("conversation_id", count="exact") \
             .eq("user_id", str(user_id)) \
             .execute()
+        
+        # Jalankan paralel
+        list_response, count_response = await asyncio.gather(
+            list_task,
+            count_task
+        )
+        # ---------------------------------------------
 
         if list_response.data is None:
-            # Handle kasus di mana Supabase mengembalikan error tanpa memunculkan exception
-            logger.error(f"Supabase returned None data for user {user_id} list query.")
-            raise DatabaseError("Gagal mengambil data conversation dari database.")
+            logger.error(f"Supabase returned None data for conversations query (user_id: {user_id}).")
+            raise DatabaseError("Gagal mengambil data percakapan dari database.")
             
         conversations = list_response.data
-        total = count_response.count or 0 # count bisa None jika tidak ada data
+        total = count_response.count or 0
 
         return conversations, total
 
     except Exception as e:
-        logger.error(f"Gagal mengambil data conversation paginasi untuk user {user_id}: {e}", exc_info=True)
-        raise DatabaseError(f"Error mengambil daftar conversation: {str(e)}")
+        logger.error(f"Gagal mengambil data percakapan paginasi (async) untuk user {user_id}: {e}", exc_info=True)
+        raise DatabaseError(f"Error mengambil daftar percakapan: {str(e)}")

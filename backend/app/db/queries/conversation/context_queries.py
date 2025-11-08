@@ -1,25 +1,26 @@
 # backend/app/db/queries/conversation/context_queries.py
+# (Diperbarui untuk AsyncClient native)
+
 import logging
 from uuid import UUID
 from typing import Optional, Dict, Any, List
-from supabase import Client
+# --- PERBAIKAN: Impor AsyncClient ---
+from supabase.client import AsyncClient
 from postgrest import APIResponse
 from postgrest.exceptions import APIError
 from app.core.exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
 
-# --- FUNGSI BARU 1: Membuat Konteks ---
-def create_context(
-    authed_client: Client, 
+async def create_context(
+    authed_client: AsyncClient, 
     user_id: UUID, 
     conversation_id: UUID,
     label: str = 'user',
     status: str = 'active'
 ) -> Dict[str, Any]:
     """
-    Hanya membuat satu baris 'context' baru.
-    Ini menggantikan bagian pertama dari RPC.
+    (Async Native) Hanya membuat satu baris 'context' baru.
     """
     try:
         payload = {
@@ -28,10 +29,11 @@ def create_context(
             "label": label,
             "status": status
         }
-        logger.debug(f"LOGGING PAYLOAD CONTEXT: {payload}") # <-- LOG BARU
-        response: APIResponse = authed_client.table("context") \
-            .insert(payload) \
+        # --- PERBAIKAN: Tambahkan returning="representation" ---
+        response: APIResponse = await authed_client.table("context") \
+            .insert(payload, returning="representation") \
             .execute()
+        # --------------------------------------------------
             
         if not response.data:
             raise DatabaseError("Gagal membuat baris 'context', tidak ada data yang dikembalikan.")
@@ -39,19 +41,17 @@ def create_context(
         return response.data[0]
         
     except Exception as e:
-        logger.error(f"Error creating new context: {e}", exc_info=True)
+        logger.error(f"Error creating new context (async): {e}", exc_info=True)
         raise DatabaseError(f"Error creating new context: {str(e)}")
-
-# --- FUNGSI BARU 2: Membuat Summary ---
-def create_summary_for_context(
-    authed_client: Client,
+    
+async def create_summary_for_context(
+    authed_client: AsyncClient,
     user_id: UUID,
     context_id: UUID,
     summary_text: str
 ) -> Dict[str, Any]:
     """
-    Hanya membuat satu baris 'summary_memory' baru.
-    Ini menggantikan bagian kedua dari RPC.
+    (Async Native) Hanya membuat satu baris 'summary_memory' baru.
     """
     try:
         payload = {
@@ -59,10 +59,11 @@ def create_summary_for_context(
             "context_id": str(context_id),
             "summary_text": summary_text
         }
-        logger.debug(f"LOGGING PAYLOAD SUMMARY: {payload}") # <-- LOG BARU
-        response: APIResponse = authed_client.table("summary_memory") \
-            .insert(payload) \
+        # --- PERBAIKAN: Tambahkan returning="representation" ---
+        response: APIResponse = await authed_client.table("summary_memory") \
+            .insert(payload, returning="representation") \
             .execute()
+        # --------------------------------------------------
         
         if not response.data:
             raise DatabaseError("Gagal membuat baris 'summary_memory'.")
@@ -70,20 +71,20 @@ def create_summary_for_context(
         return response.data[0]
         
     except Exception as e:
-        logger.error(f"Error creating new summary: {e}", exc_info=True)
+        logger.error(f"Error creating new summary (async): {e}", exc_info=True)
         raise DatabaseError(f"Error creating new summary: {str(e)}")
-
-
-# --- FUNGSI LAMA (Tetap dibutuhkan) ---
-
-def get_active_context_by_user(
-    authed_client: Client, 
+    
+async def get_active_context_by_user(
+    authed_client: AsyncClient, # <-- Tipe diubah
     user_id: UUID,
     conversation_id: UUID
 ) -> Optional[Dict[str, Any]]:
-    # ... (kode fungsi ini tetap sama, pastikan sudah diperbaiki) ...
+    """
+    (Async Native) Mengambil konteks aktif.
+    """
     try:
-        response: APIResponse = (
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response: APIResponse = await (
             authed_client.table("context")
             .select("*, summary:summary_memory(*)") 
             .eq("user_id", str(user_id))
@@ -102,13 +103,16 @@ def get_active_context_by_user(
     except Exception as e:
         raise DatabaseError(f"Error getting active context: {str(e)}")
 
-def get_context_with_summary_by_id(
-    authed_client: Client, 
+async def get_context_with_summary_by_id(
+    authed_client: AsyncClient, # <-- Tipe diubah
     context_id: UUID
 ) -> Optional[Dict[str, Any]]:
-    # ... (kode fungsi ini tetap sama) ...
+    """
+    (Async Native) Mengambil konteks by ID.
+    """
     try:
-        response: APIResponse = authed_client.table("context") \
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response: APIResponse = await authed_client.table("context") \
             .select("*, summary:summary_memory(*)") \
             .eq("context_id", str(context_id)) \
             .single() \
@@ -121,13 +125,16 @@ def get_context_with_summary_by_id(
     except Exception as e:
         raise DatabaseError(f"Error getting context by id: {str(e)}")
 
-def get_context_by_summary_id(
-    authed_client: Client, 
+async def get_context_by_summary_id(
+    authed_client: AsyncClient, # <-- Tipe diubah
     summary_id: UUID
 ) -> Optional[Dict[str, Any]]:
-    # ... (kode fungsi ini tetap sama) ...
+    """
+    (Async Native) Mengambil konteks by Summary ID.
+    """
     try:
-        response: APIResponse = (
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response: APIResponse = await (
             authed_client.table("summary_memory")
             .select("*, context(*, summary:summary_memory(*))")
             .eq("summary_id", str(summary_id))
@@ -147,14 +154,16 @@ def get_context_by_summary_id(
     except Exception as e:
         raise DatabaseError(f"Error getting context by summary_id: {str(e)}")
         
-def find_relevant_summaries(
-    authed_client: Client, 
+async def find_relevant_summaries(
+    authed_client: AsyncClient, # <-- Tipe diubah
     user_id: UUID,
     query_embedding: List[float],
     match_threshold: float = 0.7,
     match_count: int = 5
 ) -> List[Dict[str, Any]]:
-    # ... (kode fungsi ini tetap sama) ...
+    """
+    (Async Native) Memanggil RPC 'find_relevant_summaries'.
+    """
     try:
         params = {
             "p_user_id": str(user_id),
@@ -162,7 +171,8 @@ def find_relevant_summaries(
             "p_match_threshold": match_threshold,
             "p_match_count": match_count
         }
-        response: APIResponse = authed_client.rpc('find_relevant_summaries', params).execute()
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response: APIResponse = await authed_client.rpc('find_relevant_summaries', params).execute()
         return response.data if response.data else []
     except Exception as e:
         return []

@@ -1,11 +1,12 @@
 # File: backend/app/db/queries/conversation/message_queries.py
-# (Versi ini memiliki indentasi yang 100% benar)
+# (Diperbarui untuk AsyncClient native dan asyncio.gather)
 
 import logging
-import asyncio # Diperlukan untuk perbaikan 'to_thread'
+import asyncio
 from uuid import UUID
 from typing import List, Dict, Any, Literal, Optional, Tuple
-from supabase import Client
+# --- PERBAIKAN: Impor AsyncClient ---
+from supabase.client import AsyncClient
 from postgrest import APIResponse
 from app.core.exceptions import DatabaseError
 from postgrest.exceptions import APIError
@@ -13,18 +14,18 @@ from postgrest.exceptions import APIError
 logger = logging.getLogger(__name__)
 
 # =======================================================================
-# FUNGSI 1: Menambahkan Satu Pesan (Helper)
+# FUNGSI 1: Menambahkan Satu Pesan (Helper Async)
 # =======================================================================
-def add_message(
-    authed_client: Client,
+async def add_message(
+    authed_client: AsyncClient, # <-- Tipe diubah
     user_id: UUID,
     conversation_id: UUID,
-    context_id: Optional[UUID], # Dibuat opsional agar lebih tangguh
+    context_id: Optional[UUID],
     role: Literal["user", "assistant", "system", "tool"],
     content: str,
     model_used: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Menambahkan SATU pesan baru ke database."""
+    """(Async Native) Menambahkan SATU pesan baru ke database."""
     try:
         payload = {
             "user_id": str(user_id),
@@ -35,8 +36,8 @@ def add_message(
             "model_used": model_used
         }
         
-        # Blok ini harus memiliki indentasi yang konsisten
-        response: APIResponse = authed_client.table("messages") \
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response: APIResponse = await authed_client.table("messages") \
             .insert(payload, returning="representation") \
             .execute()
 
@@ -46,15 +47,14 @@ def add_message(
         return response.data[0]
 
     except Exception as e:
-        logger.error(f"Error adding single message: {e}", exc_info=True)
+        logger.error(f"Error adding single message (async): {e}", exc_info=True)
         raise DatabaseError(f"Error adding message: {str(e)}")
-
 
 # =======================================================================
 # FUNGSI 2: Menyimpan Giliran (Jalur Tulis / "Write Path")
 # =======================================================================
-def save_turn_messages(
-    authed_client: Client,
+async def save_turn_messages(
+    authed_client: AsyncClient, # <-- Tipe diubah
     user_id: UUID,
     conversation_id: UUID,
     context_id: Optional[UUID],
@@ -62,15 +62,12 @@ def save_turn_messages(
     ai_message_content: str
 ) -> Dict[str, Any]:
     """
-    Menyimpan giliran percakapan (user dan AI) sebagai dua entri terpisah
-    untuk menjamin integritas 'created_at' dan urutan kronologis.
+    (Async Native) Menyimpan giliran percakapan (user dan AI).
     """
-    
-    user_message_db = None
     try:
-        # 1. Simpan Pesan Pengguna (Pertama)
-        logger.debug(f"Menyimpan pesan PENGGUNA untuk convo {conversation_id}...")
-        user_message_db = add_message(
+        # --- PERBAIKAN: Panggil helper async ---
+        logger.debug(f"Menyimpan pesan PENGGUNA (async) untuk convo {conversation_id}...")
+        user_message_db = await add_message(
             authed_client=authed_client,
             user_id=user_id,
             conversation_id=conversation_id,
@@ -79,9 +76,8 @@ def save_turn_messages(
             content=user_message_content
         )
         
-        # 2. Simpan Pesan Asisten (Kedua)
-        logger.debug(f"Menyimpan pesan ASISTEN untuk convo {conversation_id}...")
-        ai_message_db = add_message(
+        logger.debug(f"Menyimpan pesan ASISTEN (async) untuk convo {conversation_id}...")
+        await add_message(
             authed_client=authed_client,
             user_id=user_id,
             conversation_id=conversation_id,
@@ -96,30 +92,26 @@ def save_turn_messages(
         return user_message_db
 
     except Exception as e:
-        logger.error(f"Error di save_turn_messages untuk convo {conversation_id}: {e}", exc_info=True)
+        logger.error(f"Error di save_turn_messages (async) untuk convo {conversation_id}: {e}", exc_info=True)
         raise DatabaseError(f"Error saving turn messages: {str(e)}")
-
 
 # =======================================================================
 # FUNGSI 3: Mengambil Pesan (Jalur Baca / "Read Path")
 # =======================================================================
 
-def get_messages_by_context_id(
-    authed_client: Client,
+async def get_messages_by_context_id(
+    authed_client: AsyncClient, # <-- Tipe diubah
     context_id: UUID,
     limit: int = 15
 ) -> List[Dict[str, Any]]:
     """
-    Mengambil riwayat pesan terbaru untuk context_id tertentu.
-    Ini dipanggil oleh ContextManager untuk 'load_memory_for_judge'.
-    
-    PENTING: Ini adalah fungsi SINKRON (sync) karena dipanggil
-    oleh ContextManager di dalam 'asyncio.to_thread'.
+    (Async Native) Mengambil riwayat pesan terbaru untuk context_id.
     """
     try:
         logger.debug(f"Mengambil {limit} pesan terakhir untuk context_id {context_id}...")
         
-        response: APIResponse = authed_client.table("messages") \
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response: APIResponse = await authed_client.table("messages") \
             .select("role, content, created_at") \
             .eq("context_id", str(context_id)) \
             .order("created_at", desc=True) \
@@ -130,29 +122,23 @@ def get_messages_by_context_id(
             logger.warning(f"Tidak ada riwayat pesan ditemukan untuk context_id {context_id}")
             return []
         
-        # Kembalikan dalam urutan kronologis (ASC) agar LLM bisa membacanya
         return sorted(response.data, key=lambda x: x['created_at'])
 
     except Exception as e:
-        logger.error(f"Gagal mengambil pesan untuk context {context_id}: {e}", exc_info=True)
+        logger.error(f"Gagal mengambil pesan (async) untuk context {context_id}: {e}", exc_info=True)
         raise DatabaseError(f"Error retrieving messages: {str(e)}")
     
-
-def get_first_turn_messages(
-    authed_client: Client,
+async def get_first_turn_messages(
+    authed_client: AsyncClient, # <-- Tipe diubah
     user_id: UUID,
     conversation_id: UUID
 ) -> Tuple[Optional[str], Optional[str]]:
     """
-    Mengambil pesan 'user' pertama dan pesan 'assistant' pertama
-    dari sebuah conversation_id spesifik.
+    (Async Native) Mengambil pesan 'user' pertama dan 'assistant' pertama.
     """
     try:
-        user_msg = None
-        ai_msg = None
-
-        # Ambil pesan user pertama
-        user_response: APIResponse = authed_client.table("messages") \
+        # --- PERBAIKAN: Optimasi dengan asyncio.gather ---
+        user_task = authed_client.table("messages") \
             .select("content") \
             .eq("user_id", str(user_id)) \
             .eq("conversation_id", str(conversation_id)) \
@@ -162,11 +148,7 @@ def get_first_turn_messages(
             .maybe_single() \
             .execute()
         
-        if user_response and user_response.data:
-            user_msg = user_response.data.get("content")
-
-        # Ambil pesan AI pertama
-        ai_response: APIResponse = authed_client.table("messages") \
+        ai_task = authed_client.table("messages") \
             .select("content") \
             .eq("user_id", str(user_id)) \
             .eq("conversation_id", str(conversation_id)) \
@@ -176,11 +158,14 @@ def get_first_turn_messages(
             .maybe_single() \
             .execute()
         
-        if ai_response and ai_response.data:
-            ai_msg = ai_response.data.get("content")
+        user_response, ai_response = await asyncio.gather(user_task, ai_task)
+        # ---------------------------------------------
+        
+        user_msg = user_response.data.get("content") if user_response and user_response.data else None
+        ai_msg = ai_response.data.get("content") if ai_response and ai_response.data else None
 
         return user_msg, ai_msg
 
     except Exception as e:
-        logger.error(f"Gagal mengambil pesan pertama untuk convo {conversation_id}: {e}", exc_info=True)
+        logger.error(f"Gagal mengambil pesan pertama (async) untuk convo {conversation_id}: {e}", exc_info=True)
         return None, None

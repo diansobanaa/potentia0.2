@@ -1,5 +1,5 @@
 # File: backend/app/services/calendar/guest_service.py
-# (File Diperbarui dengan Audit Logging)
+# (Diperbarui untuk AsyncClient native)
 
 import logging
 import asyncio
@@ -9,7 +9,7 @@ from typing import List, Dict, Any, TYPE_CHECKING, Optional
 # Impor Model
 from app.models.user import User
 from app.models.schedule import GuestCreate, RsvpStatus, ScheduleGuest
-# Impor Kueri
+# Impor Kueri (sekarang async)
 from app.db.queries.calendar import calendar_queries
 # Impor Exceptions
 from app.core.exceptions import DatabaseError, NotFoundError
@@ -17,19 +17,20 @@ from app.services.audit_service import log_action
 
 if TYPE_CHECKING:
     from app.core.dependencies import AuthInfoDep
+    # --- PERBAIKAN ---
+    from supabase.client import AsyncClient
 
 logger = logging.getLogger(__name__)
 
 class GuestService:
     """
-    Service untuk menangani logika bisnis terkait
-    tamu (Guests) di sebuah Acara (Schedule).
+    Service untuk menangani logika bisnis terkait tamu (Guests).
     """
     
     def __init__(self, auth_info: "AuthInfoDep"):
         self.user: User = auth_info["user"]
-        self.client = auth_info["client"]
-        logger.debug(f"GuestService diinisialisasi untuk User: {self.user.id}")
+        self.client: "AsyncClient" = auth_info["client"] # <-- Tipe diubah
+        logger.debug(f"GuestService (Async) diinisialisasi untuk User: {self.user.id}")
 
     async def add_guest(
         self, 
@@ -37,17 +38,14 @@ class GuestService:
         payload: GuestCreate
     ) -> Dict[str, Any]:
         """
-        Logika bisnis untuk menambahkan tamu (via email atau ID) ke acara.
-        (Sekarang dengan Audit Logging).
+        Logika bisnis untuk menambahkan tamu (async).
         """
         logger.info(f"User {self.user.id} menambahkan tamu ke acara {schedule_id}...")
         
-        # Siapkan payload database
         db_payload = {
             "schedule_id": str(schedule_id),
             "role": payload.role.value
         }
-        
         if payload.user_id:
             db_payload["user_id"] = str(payload.user_id)
         elif payload.email:
@@ -56,13 +54,13 @@ class GuestService:
             raise ValueError("Data tamu tidak valid.")
 
         try:
+            # --- PERBAIKAN: Panggilan 'await' langsung ---
             new_guest = await calendar_queries.add_guest_to_schedule(
                 self.client,
                 db_payload
             )
             
-            # --- [PENAMBAHAN BARU (AUDIT)] ---
-            log_action(
+            await log_action(
                 user_id=self.user.id,
                 action="schedule.guest_add",
                 details={
@@ -71,9 +69,8 @@ class GuestService:
                     "target": str(payload.user_id) if payload.user_id else payload.email
                 }
             )
-            # --- [AKHIR PENAMBAHAN] ---
+            # ---------------------------------------------
             
-            # TODO: Memicu notifikasi (misal: email) ke tamu baru
             return new_guest
 
         except Exception as e:
@@ -84,14 +81,16 @@ class GuestService:
 
     async def list_guests(self, schedule_id: UUID) -> List[Dict[str, Any]]:
         """
-        Logika bisnis untuk mengambil daftar tamu (hanya-baca).
+        Logika bisnis untuk mengambil daftar tamu (async).
         """
         logger.info(f"User {self.user.id} mengambil daftar tamu untuk acara {schedule_id}...")
         try:
+            # --- PERBAIKAN: Panggilan 'await' langsung ---
             guests_data = await calendar_queries.get_guests_for_schedule(
                 self.client,
                 schedule_id
             )
+            # ---------------------------------------------
             return guests_data
             
         except Exception as e:
@@ -101,16 +100,16 @@ class GuestService:
     async def respond_to_rsvp(
         self,
         schedule_id: UUID,
-        user_id: UUID, # ID pengguna yang login (tamu)
+        user_id: UUID, 
         action: RsvpStatus
     ) -> Dict[str, Any]:
         """
-        Logika bisnis untuk tamu merespons undangan (RSVP).
-        (Sekarang dengan Audit Logging).
+        Logika bisnis untuk tamu merespons RSVP (async).
         """
         logger.info(f"Tamu {user_id} merespons '{action.value}' untuk acara {schedule_id}...")
         
         try:
+            # --- PERBAIKAN: Panggilan 'await' langsung ---
             updated_guest_data = await calendar_queries.update_guest_response(
                 self.client,
                 schedule_id,
@@ -118,8 +117,7 @@ class GuestService:
                 action
             )
             
-            # --- [PENAMBAHAN BARU (AUDIT)] ---
-            log_action(
+            await log_action(
                 user_id=user_id,
                 action="schedule.guest_rsvp",
                 details={
@@ -128,7 +126,7 @@ class GuestService:
                     "response": action.value
                 }
             )
-            # --- [AKHIR PENAMBAHAN] ---
+            # ---------------------------------------------
             
             return updated_guest_data
             
@@ -137,34 +135,39 @@ class GuestService:
             if isinstance(e, (DatabaseError, NotFoundError)):
                 raise
             raise DatabaseError("respond_to_rsvp_service", str(e))
+
     async def remove_guest(
         self,
-        guest_id: UUID
+        guest_id: UUID,
+        # Data tamu ditambahkan dari dependency yang diperbaiki
+        guest_data: Dict[str, Any] 
     ) -> bool:
         """
-        Logika bisnis untuk menghapus tamu dari acara.
+        Logika bisnis untuk menghapus tamu dari acara (async).
+        (Sekarang menerima data tamu untuk diaudit).
         """
         logger.info(f"User {self.user.id} menghapus tamu {guest_id}...")
         
         try:
-            # TODO: Tambahkan Fallback
-            # (Misal: cek apakah 'guest_id' yang dihapus adalah
-            #  'co-host' terakhir, dll. Untuk v1, hapus langsung.)
-            
+            # --- PERBAIKAN: Panggilan 'await' langsung ---
             success = await calendar_queries.remove_guest_from_schedule(
                 self.client,
                 guest_id
             )
 
-            log_action(
-                user_id=user_id,
-                action="schedule.guest_rsvp",
-                details={
-                    "guest_id": str(success['guest_id']),
-                    "schedule_id": str(schedule_id),
-                    "response": action.value
-                }
-            )
+            # Audit log ditambahkan (sebelumnya hilang)
+            if success:
+                await log_action(
+                    user_id=self.user.id,
+                    action="schedule.guest_remove",
+                    details={
+                        "guest_id": str(guest_id),
+                        "schedule_id": str(guest_data.get("schedule_id")),
+                        "removed_user_id": str(guest_data.get("user_id")),
+                        "removed_email": guest_data.get("guest_email")
+                    }
+                )
+            # ---------------------------------------------
 
             return success
             

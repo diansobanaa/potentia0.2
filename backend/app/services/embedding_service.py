@@ -1,4 +1,6 @@
-# PARSE: 18-embedding-service-v2.py
+# backend/app/services/embedding_service.py
+# (Diperbarui untuk panggilan async native)
+
 import logging
 import asyncio
 import google.generativeai as genai
@@ -7,10 +9,8 @@ from app.core.config import settings
 from app.services.interfaces import IEmbeddingService
 from app.core.exceptions import EmbeddingGenerationError
 
-# Konfigurasi logger
 logger = logging.getLogger(__name__)
 
-# Konfigurasi klien Google sekali saat modul di-load
 try:
     if settings.GEMINI_API_KEY:
         genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -19,28 +19,8 @@ try:
 except Exception as e:
     logger.critical(f"Gagal mengkonfigurasi Google Gemini: {e}", exc_info=True)
 
-def _embed_content_sync(text: str, task_type: str) -> List[float]:
-    """
-    Fungsi wrapper SINKRON (blocking) untuk genai.embed_content.
-    Ini adalah logika asli dari file Anda.
-    """
-    try:
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=text,
-            task_type=task_type
-        )
-        return result["embedding"]
-    except Exception as e:
-        logger.error(f"Error internal saat memanggil genai.embed_content: {e}", exc_info=True)
-        # Melemparkan exception untuk ditangkap oleh pemanggil async
-        raise EmbeddingGenerationError(str(e))
 
 class GeminiEmbeddingService(IEmbeddingService):
-    """
-    Implementasi konkret IEmbeddingService yang membungkus
-    panggilan sinkron Google API di thread terpisah.
-    """
     
     def __init__(self, model_name: str = "models/text-embedding-004"):
         self.model_name = model_name
@@ -53,26 +33,24 @@ class GeminiEmbeddingService(IEmbeddingService):
         task_type: str = "retrieval_query"
     ) -> List[float]:
         """
-        Secara ASINKRON menghasilkan embedding.
-        
-        Ini memanggil fungsi _embed_content_sync yang blocking
-        di thread pool terpisah menggunakan asyncio.to_thread,
-        sehingga event loop FastAPI tidak terblokir.
+        [PERBAIKAN] Secara ASINKRON menghasilkan embedding
+        menggunakan panggilan 'embed_content_async' native.
         """
         if not settings.GEMINI_API_KEY:
             raise EmbeddingGenerationError("GEMINI_API_KEY tidak diatur.")
         
         try:
-            # Menjalankan fungsi SINKRON di thread terpisah
-            embedding = await asyncio.to_thread(
-                _embed_content_sync, 
-                text, 
-                task_type
+            # --- PERBAIKAN: Panggil 'embed_content_async' ---
+            result = await genai.embed_content_async(
+                model=self.model_name,
+                content=text,
+                task_type=task_type
             )
-            return embedding
+            return result["embedding"]
+            # ----------------------------------------------
+
         except Exception as e:
-            logger.error(f"Gagal menjalankan embedding_service.generate_embedding: {e}")
-            # Pastikan exception yang dilempar adalah tipe yang kita harapkan
+            logger.error(f"Gagal menjalankan embedding_service.generate_embedding (async): {e}", exc_info=True)
             if isinstance(e, EmbeddingGenerationError):
                 raise
             raise EmbeddingGenerationError(str(e))

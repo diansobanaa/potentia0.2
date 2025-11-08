@@ -173,3 +173,9 @@ Prefix: /api/v1/workspaces/{workspace_id}/schedules
     PATCH /{schedule_id}: (Disarankan) Memperbarui jadwal.
 
     DELETE /{schedule_id}: (Disarankan) Menghapus jadwal.
+
+
+## PENTING
+* buat agar bisa menggunakan nomor hp semua negara
+* perbaiki logika chat. tambahkan logika waktu. 
+ ** masalah: saya membicarakan tentang seduh kopi 1 minggu lalu, tapi saat sekarang saya menyapa, model masih membahas kopi

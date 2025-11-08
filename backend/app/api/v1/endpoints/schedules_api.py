@@ -14,7 +14,7 @@ from uuid import UUID
 
 # Impor Model Pydantic
 from app.models.schedule import (
-    Schedule, ScheduleCreate, ScheduleUpdate
+    Schedule, ScheduleCreate, ScheduleUpdate, SubscriptionRole
 )
 # Impor Dependencies Keamanan
 from app.core.dependencies import (

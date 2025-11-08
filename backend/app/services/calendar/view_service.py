@@ -1,5 +1,5 @@
 # File: backend/app/services/calendar/view_service.py
-# (File Baru)
+# (Diperbarui untuk AsyncClient native)
 
 import logging
 import asyncio
@@ -10,25 +10,21 @@ from datetime import datetime
 # Impor Model
 from app.models.user import User
 from app.models.schedule import ScheduleInstance
-# (Kita akan buat model response paginasi baru)
 from pydantic import BaseModel
 
-# Impor Kueri
+# Impor Kueri (sekarang async)
 from app.db.queries.calendar import calendar_queries
 # Impor Exceptions
 from app.core.exceptions import DatabaseError
 
 if TYPE_CHECKING:
     from app.core.dependencies import AuthInfoDep
+    # --- PERBAIKAN ---
+    from supabase.client import AsyncClient
 
 logger = logging.getLogger(__name__)
 
-# --- Model Respons Paginasi ---
 class PaginatedScheduleInstanceResponse(BaseModel):
-    """
-    Model respons untuk 'GET /view/schedules'.
-    Mengembalikan daftar 'ScheduleInstances' yang dipaginasi.
-    """
     items: List[ScheduleInstance]
     total: int
     page: int
@@ -37,15 +33,13 @@ class PaginatedScheduleInstanceResponse(BaseModel):
 
 class ViewService:
     """
-    (BARU - TODO-API-6)
-    Service untuk menangani logika bisnis terkait
-    Tampilan (Views) kalender yang kompleks.
+    Service untuk menangani logika bisnis terkait Tampilan (Views) kalender.
     """
     
     def __init__(self, auth_info: "AuthInfoDep"):
         self.user: User = auth_info["user"]
-        self.client = auth_info["client"]
-        logger.debug(f"ViewService diinisialisasi untuk User: {self.user.id}")
+        self.client: "AsyncClient" = auth_info["client"] # <-- Tipe diubah
+        logger.debug(f"ViewService (Async) diinisialisasi untuk User: {self.user.id}")
 
     async def get_paginated_schedule_view(
         self, 
@@ -55,8 +49,7 @@ class ViewService:
         size: int
     ) -> PaginatedScheduleInstanceResponse:
         """
-        Logika bisnis untuk 'GET /view/schedules'.
-        Mengambil instance acara yang sudah di-precompute untuk pengguna.
+        Logika bisnis untuk 'GET /view/schedules' (async).
         """
         user_id = self.user.id
         offset = (page - 1) * size
@@ -64,7 +57,8 @@ class ViewService:
         logger.info(f"User {user_id} meminta tampilan jadwal: page {page}, size {size}")
 
         try:
-            # Panggil kueri DB (dari Langkah 1)
+            # --- PERBAIKAN: Panggilan 'await' langsung ---
+            # Kueri ini sudah dioptimalkan dengan asyncio.gather di dalamnya
             instances_data, total = await calendar_queries.get_schedule_instances_for_user(
                 self.client,
                 user_id,
@@ -73,8 +67,8 @@ class ViewService:
                 size, # 'limit'
                 offset
             )
+            # ---------------------------------------------
             
-            # Ubah data mentah DB menjadi objek Pydantic
             instance_items = [
                 ScheduleInstance.model_validate(inst) for inst in instances_data
             ]

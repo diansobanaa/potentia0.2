@@ -1,11 +1,12 @@
 # PARSE: 97-rag-repository-holistic.py
-# (Ganti seluruh kelas SupabaseRagRepository)
+# (Diperbarui untuk AsyncClient native)
 
 import asyncio
 import logging
 from uuid import UUID
 from typing import List, Tuple, Dict, Any
-from supabase import Client
+# --- PERBAIKAN: Impor AsyncClient ---
+from supabase.client import AsyncClient
 from app.db.repositories.interfaces import IRagRepository
 from app.core.exceptions import RpcError
 from app.core.config import settings
@@ -13,13 +14,13 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 class SupabaseRagRepository(IRagRepository):
-    """Implementasi Supabase untuk RAG holistik (lintas-canvas & jadwal)."""
+    """Implementasi Supabase untuk RAG holistik (async)."""
 
-    def __init__(self, client: Client):
+    def __init__(self, client: AsyncClient): # <-- Tipe diubah
         self.client = client
 
     async def find_relevant_blocks(self, embedding: List[float]) -> str:
-        """Implementasi async untuk RPC 'find_relevant_blocks' holistik (v4)."""
+        """(Async Native) Implementasi RPC 'find_relevant_blocks'."""
         function_name = "find_relevant_blocks"
         logger.debug(f"Memanggil RPC {function_name} holistik (mengandalkan RLS)")
         try:
@@ -28,15 +29,13 @@ class SupabaseRagRepository(IRagRepository):
                 "match_threshold": 0.65,
                 "match_count": 5
             }
-            def _execute_rpc():
-                return self.client.rpc(function_name, params).execute()
-            response = await asyncio.to_thread(_execute_rpc)
+            # --- PERBAIKAN: Hapus 'to_thread', gunakan 'await' ---
+            response = await self.client.rpc(function_name, params).execute()
 
             if not response.data:
                 logger.info(f"RPC {function_name} tidak menemukan blok relevan.")
                 return ""
 
-            # Format hasil (termasuk judul canvas)
             context_lines = ["[KONTEKS BLOK RELEVAN DARI SEMUA CANVAS]"]
             for item in response.data:
                 line = (
@@ -48,11 +47,11 @@ class SupabaseRagRepository(IRagRepository):
             
             return "\n".join(context_lines)
         except Exception as e:
-            logger.error(f"Error saat memanggil RPC {function_name}: {e}", exc_info=True)
+            logger.error(f"Error saat memanggil RPC {function_name} (async): {e}", exc_info=True)
             raise RpcError(function_name, e)
 
     async def find_relevant_schedules(self, embedding: List[float]) -> str:
-        """(BARU) Implementasi async untuk RPC 'find_relevant_schedules' (v4)."""
+        """(Async Native) Implementasi RPC 'find_relevant_schedules'."""
         function_name = "find_relevant_schedules"
         logger.debug(f"Memanggil RPC {function_name} holistik (mengandalkan RLS)")
         try:
@@ -61,15 +60,13 @@ class SupabaseRagRepository(IRagRepository):
                 "match_threshold": 0.7,
                 "match_count": 5
             }
-            def _execute_rpc():
-                return self.client.rpc(function_name, params).execute()
-            response = await asyncio.to_thread(_execute_rpc)
+            # --- PERBAIKAN: Hapus 'to_thread', gunakan 'await' ---
+            response = await self.client.rpc(function_name, params).execute()
 
             if not response.data:
                 logger.info(f"RPC {function_name} tidak menemukan jadwal relevan.")
                 return ""
 
-            # Format hasil
             context_lines = ["[JADWAL RELEVAN YANG DITEMUKAN]"]
             for item in response.data:
                 line = (
@@ -82,5 +79,5 @@ class SupabaseRagRepository(IRagRepository):
             
             return "\n".join(context_lines)
         except Exception as e:
-            logger.error(f"Error saat memanggil RPC {function_name}: {e}", exc_info=True)
+            logger.error(f"Error saat memanggil RPC {function_name} (async): {e}", exc_info=True)
             raise RpcError(function_name, e)

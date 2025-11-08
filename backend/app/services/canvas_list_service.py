@@ -26,55 +26,46 @@ class CanvasListService:
     async def get_paginated_workspace_canvases(
         self, workspace_id: UUID, page: int, size: int
     ) -> PaginatedCanvasListResponse:
-        """
-        Mengambil daftar canvas workspace yang dipaginasi.
-        """
         offset = (page - 1) * size
         logger.info(f"User {self.user.id} mengambil canvas workspace {workspace_id}: page {page}, size {size}")
 
-        # Panggil kueri paginasi dari Langkah 2
-        canvases_data, total = await asyncio.to_thread(
-            get_canvases_in_workspace_paginated,
+        # 1. await langsung (tanpa to_thread)
+        canvases_data, total = await get_canvases_in_workspace_paginated(
             self.client, workspace_id, offset, size
         )
-        
-        # Parse data mentah DB ke model Pydantic
-        # Gunakan model_validate untuk menangani alias 'id'
+
+        # 2. Parse data mentah DB ke model Pydantic
         canvas_items = [Canvas.model_validate(c) for c in canvases_data]
-        
         total_pages = (total + size - 1) // size
-        
+
         return PaginatedCanvasListResponse(
             items=canvas_items,
             total=total,
             page=page,
             size=size,
-            total_pages=total_pages
+            total_pages=total_pages,
         )
 
     async def get_paginated_personal_canvases(
         self, page: int, size: int
     ) -> PaginatedCanvasListResponse:
-        """
-        Mengambil daftar canvas pribadi yang dipaginasi.
-        """
         offset = (page - 1) * size
         user_id = self.user.id
         logger.info(f"User {user_id} mengambil canvas pribadi: page {page}, size {size}")
 
-        # Panggil kueri paginasi dari Langkah 2
-        canvases_data, total = await asyncio.to_thread(
-            get_user_personal_canvases_paginated,
+        # 1. await langsung (tanpa to_thread)
+        canvases_data, total = await get_user_personal_canvases_paginated(
             self.client, user_id, offset, size
         )
-        
+
+        # 2. Konversi model
         canvas_items = [Canvas.model_validate(c) for c in canvases_data]
         total_pages = (total + size - 1) // size
-        
+
         return PaginatedCanvasListResponse(
             items=canvas_items,
             total=total,
             page=page,
             size=size,
-            total_pages=total_pages
+            total_pages=total_pages,
         )

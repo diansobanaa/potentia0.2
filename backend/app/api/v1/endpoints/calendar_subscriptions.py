@@ -1,63 +1,47 @@
 # File: backend/app/api/v1/endpoints/calendar_subscriptions.py
-# (File Baru - TODO-API-4)
+# (Diperbarui dengan Dependency Keamanan)
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any
 from uuid import UUID
 
-# Impor Model Pydantic
 from app.models.schedule import SubscriptionCreate
-# (Kita akan buat model respons yang lebih baik nanti)
-
-# Impor Dependencies Keamanan
 from app.core.dependencies import (
-    CalendarAccessDep,       # Untuk GET (Viewer bisa lihat)
-    CalendarEditorAccessDep, # Untuk POST/DELETE (Hanya Editor/Owner)
-    SubscriptionServiceDep
+    CalendarAccessDep,
+    CalendarEditorAccessDep,
+    SubscriptionServiceDep,
+    get_subscription_delete_access 
 )
-# Impor Exceptions
 from app.core.exceptions import DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
-# Definisikan router baru
-# Prefix diatur di api.py, tapi kita tambahkan di sini
-# untuk kejelasan, dan kita akan hapus dari api.py
+# (Router 'router' tetap sama)
 router = APIRouter(
     prefix="/calendars/{calendar_id}/subscriptions",
-    tags=["calendars"] # Grupkan dengan 'calendars'
+    tags=["calendars"] 
 )
-
-# =======================================================================
-# === ENDPOINT RESOURCE: SUBSCRIPTIONS ===
-# =======================================================================
-
+# (Endpoint POST dan GET tetap sama)
 @router.post(
     "/", 
-    response_model=Dict[str, Any], # TODO: Buat response model
+    response_model=Dict[str, Any], 
     status_code=status.HTTP_201_CREATED,
     summary="Undang/Tambah Anggota ke Kalender"
 )
 async def add_subscription_to_calendar(
-    calendar_id: UUID, # Diambil dari path prefix
+    calendar_id: UUID, 
     payload: SubscriptionCreate,
-    access_info: CalendarEditorAccessDep, # Keamanan: Cek 'editor'/'owner'
+    access_info: CalendarEditorAccessDep, 
     service: SubscriptionServiceDep
 ):
-    """
-    Menambahkan pengguna baru (via User ID) sebagai subscriber
-    ke kalender ini.
-    
-    Keamanan:
-    Hanya 'owner' atau 'editor' dari kalender yang dapat mengundang.
-    """
+    # (...logika tidak berubah...)
     try:
         new_subscription = await service.create_new_subscription(
             calendar_id, payload
         )
         return new_subscription
-        
+    
     except DatabaseError as e:
         logger.error(f"Gagal menambah subscription (500) ke kalender {calendar_id}: {e}", exc_info=True)
         if "invite_conflict" in str(e):
@@ -78,36 +62,26 @@ async def add_subscription_to_calendar(
 
 @router.get(
     "/", 
-    response_model=List[Dict[str, Any]], # TODO: Buat response model
+    response_model=List[Dict[str, Any]], 
     summary="List Anggota (Subscriber) Kalender"
 )
 async def get_subscriptions_for_calendar(
-    calendar_id: UUID, # Diambil dari path prefix
-    access_info: CalendarAccessDep, # Keamanan: Cek 'viewer'
+    calendar_id: UUID, 
+    access_info: CalendarAccessDep, 
     service: SubscriptionServiceDep
 ):
-    """
-    Mengambil daftar semua pengguna yang berlangganan
-    ke kalender ini.
-    
-    Keamanan:
-    Hanya pengguna yang sudah memiliki akses (minimal 'viewer')
-    yang dapat melihat daftar anggota.
-    """
+    # (...logika tidak berubah...)
     try:
         subscriptions = await service.get_calendar_subscriptions(calendar_id)
-        # TODO: Parsing ini ke response model yang bersih
-        return subscriptions
         
+        return subscriptions
+    
     except Exception as e:
         logger.error(f"Gagal mengambil daftar subscription: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Terjadi kesalahan internal.")
 
 
 # --- Endpoint DELETE (Perlu router terpisah) ---
-# Kita perlu router baru karena path-nya tidak mengandung
-# /calendars/{calendar_id}
-
 subscription_delete_router = APIRouter(
     prefix="/subscriptions",
     tags=["calendars"]
@@ -118,27 +92,26 @@ subscription_delete_router = APIRouter(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Hapus Anggota (Unsubscribe)"
 )
+
 async def delete_a_subscription(
-    subscription_id: UUID,
-    service: SubscriptionServiceDep
-    # TODO: Keamanan untuk endpoint ini kompleks.
-    # Siapa yang boleh menghapus?
-    # 1. Pengguna itu sendiri (self-unsubscribe)
-    # 2. Admin/Owner kalender (kick)
-    # Ini memerlukan dependency keamanan kustom yang
-    # mengambil subscription DAN role pengguna di kalender.
+    service: SubscriptionServiceDep,                                         
+    access_info: Dict[str, Any] = Depends(get_subscription_delete_access),  
 ):
     """
     Menghapus anggota dari kalender (Unsubscribe atau Kick).
     
-    Keamanan (Sederhana - TODO: Perbaiki):
-    Saat ini, hanya bergantung pada RLS.
-    Harusnya: Cek apakah user = subscription.user_id ATAU
-    cek apakah user adalah 'editor'/'owner' dari kalender.
+    Keamanan:
+    Sekarang dilindungi oleh dependency 'get_subscription_delete_access'.
+    Hanya pengguna ybs atau admin/owner kalender yang bisa menghapus.
     """
     
+    # Ambil data dari dependency yang sudah divalidasi
+    subscription_id = access_info["subscription"]["subscription_id"]
+    subscriber_to_delete = access_info["subscription"] # Data lengkap
+    
     try:
-        await service.delete_subscription(subscription_id)
+        # Panggil service, sekarang dengan data subscriber
+        await service.delete_subscription(subscription_id, subscriber_to_delete)
         return # Mengembalikan 204 No Content
 
     except NotFoundError as e:
@@ -146,7 +119,12 @@ async def delete_a_subscription(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except DatabaseError as e:
         logger.error(f"Gagal hapus subscription (500): {e}", exc_info=True)
-        # TODO: Tangani error 'owner_delete_prevented'
+        # Tangani error pencegahan penghapusan 'owner' dari service
+        if "owner_delete_prevented" in str(e):
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Pemilik (Owner) kalender tidak dapat dihapus."
+            )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     except Exception as e:
         logger.error(f"Error tidak terduga di delete_a_subscription: {e}", exc_info=True)

@@ -1,16 +1,31 @@
+# backend/app/db/queries/conversation/log_queries.py
+# (Diperbarui untuk AsyncClient native + perbaikan NameError)
+
 import logging
 from postgrest.exceptions import APIError
 from datetime import datetime
 import uuid
+# --- PERBAIKAN: Impor AsyncClient ---
+from supabase.client import AsyncClient
+from typing import List, Dict, Any, Optional
+# --- PERBAIKAN: Impor UUID yang hilang ---
+from uuid import UUID
+# ------------------------------------
 
 logger = logging.getLogger(__name__)
 
-def get_recent_decisions(authed_client, user_id, conversation_id, limit: int = 5) -> list[dict]:
+async def get_recent_decisions(
+    authed_client: AsyncClient, # <-- Tipe diubah
+    user_id: UUID, # <-- Sekarang 'UUID' dikenali
+    conversation_id: UUID, 
+    limit: int = 5
+) -> List[Dict[str, Any]]:
     """
-    Ambil beberapa log keputusan terakhir.
+    (Async Native) Ambil beberapa log keputusan terakhir.
     """
     try:
-        response = (
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response = await (
             authed_client.table("decision_logs")
             .select("*")
             .eq("user_id", str(user_id))
@@ -24,21 +39,20 @@ def get_recent_decisions(authed_client, user_id, conversation_id, limit: int = 5
             logger.info("ℹ️ Tidak ada log keputusan ditemukan untuk percakapan ini.")
         return data
     except Exception as e:
-        logger.error(f"Gagal memuat riwayat keputusan: {e}", exc_info=True)
+        logger.error(f"Gagal memuat riwayat keputusan (async): {e}", exc_info=True)
         return []
 
-def create_decision_log_safe(
-    authed_client,
-    user_id,
-    conversation_id,
-    message_id,
-    context_id,
-    decision_reason,
-    details_json,
+async def create_decision_log_safe(
+    authed_client: AsyncClient, # <-- Tipe diubah
+    user_id: Optional[UUID],
+    conversation_id: Optional[UUID],
+    message_id: Optional[UUID],
+    context_id: Optional[UUID],
+    decision_reason: Optional[str],
+    details_json: Optional[Dict[str, Any]],
 ):
     """
-    Simpan keputusan AI Judge ke tabel decision_logs.
-    Jika message_id/context_id kosong, buat placeholder aman di tabel messages supaya FK tidak gagal.
+    (Async Native) Simpan keputusan AI Judge ke tabel decision_logs.
     """
     try:
         safe_user_id = str(user_id) if user_id else "00000000-0000-0000-0000-000000000000"
@@ -48,8 +62,8 @@ def create_decision_log_safe(
         safe_reason = decision_reason or "Tidak ada reason dari AI."
         safe_details = details_json or {}
 
-        # Insert ke decision_logs
-        response = (
+        # --- PERBAIKAN: Gunakan 'await' ---
+        response = await (
             authed_client.table("decision_logs")
             .insert({
                 "user_id": safe_user_id,
@@ -70,6 +84,6 @@ def create_decision_log_safe(
         return response.data
 
     except APIError as e:
-        logger.error(f"❌ Error API di create_decision_log_safe: {e.details if hasattr(e, 'details') else e}")
+        logger.error(f"❌ Error API di create_decision_log_safe (async): {e.details if hasattr(e, 'details') else e}")
     except Exception as e:
-        logger.error(f"❌ Error umum di create_decision_log_safe: {e}", exc_info=True)
+        logger.error(f"❌ Error umum di create_decision_log_safe (async): {e}", exc_info=True)

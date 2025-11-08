@@ -198,3 +198,44 @@ Kita telah berhasil mengimplementasikan CRUD penuh untuk manajemen anggota works
 #### Komentar untuk Selanjutnya (Fitur Tertunda)
 
 * **Endpoint "Accept/Reject"**: Kita telah berhasil membuat alur "kirim undangan" (`POST /.../members`). Langkah berikutnya yang logis adalah membuat endpoint untuk *menerima* undangan tersebut (misal: `POST /invitations/workspace/respond`), yang akan memvalidasi `token` dan memindahkan pengguna dari `WorkspaceInvitations` ke `WorkspaceMembers`.
+
+## 📊 Status Fitur (Update per 9 November 2025)
+
+Kita telah berhasil menyelesaikan implementasi penuh dari **Arsitektur Kalender & Penjadwalan "Calendar-Centric" (v1.2)** serta **Refaktor Asinkron Penuh** pada seluruh *stack* I/O *backend*.
+
+Ini menandai pencapaian teknis besar, memigrasikan aplikasi dari *prototype* berbasis *thread* menjadi arsitektur *non-blocking* yang skalabel.
+
+### 1. Arsitektur Kalender & Jadwal (v1.2 - Selesai)
+
+Fitur inti penjadwalan, yang merupakan fondasi untuk fungsionalitas proaktif, kini telah selesai dan terintegrasi.
+
+* **Skema 5-Tabel:** Seluruh skema database baru telah diimplementasikan: `Calendars`, `CalendarSubscriptions`, `Schedules`, `ScheduleGuests`, dan `ScheduleInstances`.
+* **CRUD API Penuh:** Semua *endpoint* yang direncanakan telah dibuat, diimplementasikan, dan di-debug:
+    * **Resource `Calendars`:** `POST`, `GET`, `PATCH`, `DELETE` untuk mengelola "folder" kalender.
+    * **Resource `Schedules`:** `POST`, `GET`, `PATCH`, `DELETE` untuk mengelola "sumber kebenaran" acara, termasuk validasi `RRULE` di *foreground* untuk mencegah input buruk.
+    * **Resource `Subscriptions`:** `POST`, `GET`, `DELETE` untuk manajemen anggota kalender (penambahan langsung).
+    * **Resource `Guests`:** `POST`, `GET`, `PATCH /respond` (RSVP), dan `DELETE` untuk manajemen tamu per-acara.
+* **Keamanan Granular:** Setiap *endpoint* CUD (Create, Update, Delete) dilindungi oleh *dependency* keamanan granular (`CalendarEditorAccessDep`, `ScheduleAccessDep`, `GuestAccessDep`, `SubscriptionDeleteAccessDep`) untuk memastikan hanya pengguna yang berwenang (misalnya, 'owner' atau 'editor') yang dapat melakukan perubahan.
+
+### 2. Performa & Skalabilitas (Selesai)
+
+Logika *backend* yang krusial untuk performa tinggi kini telah diimplementasikan dan distabilkan.
+
+* **Denormalisasi RRULE (MUST FIX Selesai):** *Background job* di `schedule_expander.py` sekarang secara efisien menghitung dan melakukan denormalisasi (N x M) acara berulang ke tabel `ScheduleInstances` untuk *semua* subscriber. Ini memastikan *query* kalender tetap cepat, tidak peduli berapa banyak acara berulang atau subscriber yang ada.
+* **Deteksi Konflik (Free/Busy) Cepat:** `FreeBusyService` telah diimplementasikan dengan strategi "Redis-first". Pengecekan ketersediaan (untuk deteksi konflik) kini menggunakan *cache* Redis ZSET yang *di-cache* dan *non-blocking*, dengan *fallback* ke tabel `ScheduleInstances` yang sudah di-precompute.
+* **Tampilan Kalender Cepat:** *Endpoint* utama UI (`GET /view/schedules`) membaca langsung dari tabel `ScheduleInstances` yang terdenormalisasi, memastikan pemuatan kalender yang instan bagi pengguna.
+
+### 3. Refaktor Asinkron Penuh (Selesai)
+
+Seluruh *codebase* *backend* telah berhasil dimigrasi dari arsitektur *sync-over-async* (`asyncio.to_thread`) ke arsitektur **asinkron *native*** penuh.
+
+* **Database (Supabase):** Semua panggilan database di seluruh direktori `app/db/queries/` dan `app/db/repositories/` telah di-refaktor untuk menggunakan `AsyncClient` dengan pemanggilan `await` *native*.
+* **Cache (Redis):** *Library* Redis telah dimigrasi ke `redis.asyncio`. Semua operasi *cache* (termasuk *locking* di *jobs* dan *query* di `FreeBusyService`) sekarang sepenuhnya *non-blocking*.
+* **Embedding (Google):** Layanan *embedding* telah di-refaktor untuk menggunakan `genai.embed_content_async`, menghilangkan *bottleneck* I/O terakhir.
+
+### 4. Keamanan & Stabilitas (Selesai)
+
+* **Perbaikan Bug Kritis:** Kita telah berhasil men-debug dan memperbaiki serangkaian *error* pasca-refaktor, termasuk `AttributeError` (`.select`, `.single`), `ImportError` (`get_supabase_client`), dan `RuntimeWarning` (`was never awaited`), yang menghasilkan *stack* aplikasi yang stabil.
+* **Perbaikan Keamanan IDOR:** Celah keamanan di *endpoint* `DELETE /subscriptions/{id}` telah ditutup dengan mengimplementasikan *dependency* `SubscriptionDeleteAccessDep`.
+* **Validasi Input:** *Service* (seperti `schedule_service.py`) sekarang mencakup validasi input yang kuat di *foreground* (misalnya untuk `RRULE`), yang menolak data buruk dari klien dengan `HTTP 400` alih-alih menyebabkan *crash* pada *background job*.
+* **Logging Audit:** Semua *service* CUD (Create, Update, Delete) di fitur Kalender sekarang memanggil `await log_action(...)`, dan *bug* `await` di `audit_service.py` telah diperbaiki.
