@@ -1,4 +1,5 @@
 # File: backend/app/api/v1/endpoints/invitations.py
+# (File Baru)
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -47,6 +48,7 @@ async def respond_to_workspace_invite(
     client = auth_info["client"]
 
     try:
+        # Memanggil logika inti di 'workspace_queries'
         result = await respond_to_workspace_invitation(
             authed_client=client,
             token=payload.token,
@@ -54,6 +56,7 @@ async def respond_to_workspace_invite(
             user=user
         )
         
+        # Fallback jika logika tidak mengembalikan hasil
         if not result:
              raise HTTPException(status_code=500, detail="Gagal memproses undangan.")
              
@@ -71,6 +74,12 @@ async def respond_to_workspace_invite(
         if "invite_permission_denied" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, 
+                detail=str(e)
+            )
+        # Tangani error 'invite_conflict' jika terjadi di 'add_member'
+        if "invite_conflict" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
                 detail=str(e)
             )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

@@ -4,12 +4,13 @@ from typing import Dict, Any, List
 from supabase import Client
 from app.db.queries.workspace import workspace_queries
 from app.models.user import User
-# [DIUBAH] Impor skema paginasi
 from app.models.workspace import (
     WorkspaceCreate, MemberRole, Workspace, WorkspaceUpdate,
     PaginatedWorkspaceListResponse
 )
+from app.models.user import User
 from app.core.exceptions import DatabaseError, NotFoundError
+
 
 logger = logging.getLogger(__name__)
 
@@ -85,3 +86,5 @@ class WorkspaceService:
         return await workspace_queries.delete_workspace(
             self.client, workspace_id, self.user.id
         )
+    
+

@@ -6,6 +6,7 @@ from app.api.v1.api import api_router
 from app.core.config import settings
 import logging.config
 from app.services.chat_engine.schemas import PaginatedConversationListResponse
+from app.core.scheduler import scheduler, setup_scheduler_jobs
 
 # --- KONFIGURASI LOGGING (Ganti basicConfig) ---
 LOGGING_CONFIG = {
@@ -85,12 +86,47 @@ LOGGING_CONFIG = {
 }
 
 logging.config.dictConfig(LOGGING_CONFIG)
+logger = logging.getLogger("app")
 # --- AKHIR KONFIGURASI LOGGING ----
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Mengelola startup dan shutdown event untuk aplikasi FastAPI.
+    Ini adalah tempat kita mengaktifkan background scheduler.
+    """
+    # Kode ini akan dijalankan saat aplikasi startup
+    logger.info("Aplikasi FastAPI memulai startup...")
+    try:
+        # Panggil model_rebuild() untuk model yang bermasalah
+        PaginatedConversationListResponse.model_rebuild()
+        logger.debug("PaginatedConversationListResponse model rebuilt successfully.")
+    except Exception as e:
+        logger.warning(f"Gagal rebuild PaginatedConversationListResponse model: {e}")
+
+    try:
+        # Daftarkan semua job (dari file jobs/)
+        setup_scheduler_jobs()
+        # Mulai scheduler di background
+        scheduler.start()
+        logger.info("APScheduler (untuk background jobs) berhasil dimulai.")
+    except Exception as e:
+        logger.critical(f"FATAL: Gagal memulai APScheduler: {e}", exc_info=True)
+
+    yield  # Aplikasi berjalan di sini
+
+    # Kode ini akan dijalankan saat aplikasi shutdown
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("APScheduler berhasil dimatikan.")
+    logger.info("Aplikasi FastAPI shutdown.")
+
 
 app = FastAPI(
     title="AI Collaborative Canvas API",
     version="0.1.0",
-    description="Backend for a collaborative canvas with an intelligent AI agent."
+    description="Backend for a collaborative canvas with an intelligent AI agent.",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -102,33 +138,3 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
-
-# Buat lifespan manager
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Kode ini akan dijalankan saat aplikasi startup
-    print("Application startup...")
-    try:
-        # Panggil model_rebuild() untuk model yang bermasalah
-        PaginatedConversationListResponse.model_rebuild()
-        print("PaginatedConversationListResponse model rebuilt successfully.")
-    except Exception as e:
-        print(f"Warning: Failed to rebuild PaginatedConversationListResponse model: {e}")
-
-    yield  # Aplikasi berjalan di sini
-
-    # Kode ini akan dijalankan saat aplikasi shutdown (opsional)
-    print("Application shutdown.")
-
-# Inisialisasi FastAPI dengan lifespan manager
-app = FastAPI(
-    title="My App API",
-    lifespan=lifespan, # <-- Gunakan lifespan
-    # ... konfigurasi lainnya
-)
-
-app.include_router(api_router, prefix="/api/v1")
-
-@app.get("/", tags=["Root"])
-async def read_root():
-    return {"message": "Welcome to the AI Collaborative Canvas API."}

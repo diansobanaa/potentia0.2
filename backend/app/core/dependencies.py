@@ -32,14 +32,27 @@ from app.services.canvas_list_service import CanvasListService
 from app.services.user.user_service import UserService
 from app.services.workspace.workspace_service import WorkspaceService
 from app.services.user.user_service import UserService
+from app.services.calendar.freebusy_service import FreeBusyService
+from app.services.calendar.calendar_service import CalendarService
+from app.services.calendar.schedule_service import ScheduleService
+from app.services.calendar.subscription_service import SubscriptionService
+from app.services.calendar.guest_service import GuestService
+from app.services.calendar.view_service import ViewService
+
 
 # --- Impor untuk MODELS ---
 from app.models.workspace import MemberRole 
 from app.models.canvas import CanvasRole
+from app.models.schedule import CalendarVisibility, SubscriptionRole, Schedule
+from app.models.schedule import RsvpStatus, GuestRole
 
 # --- Impor untuk DATABASE ---
 from app.db.queries.canvas.canvas_queries import get_canvas_by_id, check_user_canvas_access
 from app.db.queries.workspace.workspace_queries import check_user_membership
+from app.db.queries.calendar.calendar_queries import get_calendar_by_id, get_user_subscription
+from app.db.queries.calendar.calendar_queries import (
+    get_calendar_by_id, get_user_subscription, get_schedule_by_id
+)
 
 
 # --- Konfigurasi Awal ---
@@ -173,7 +186,7 @@ async def get_current_workspace_member(
         "role": membership.get("role", MemberRole.guest.value) # Ekstrak role
     }
 
-# --- [DEPENDENCY BARU DITAMBAHKAN DI SINI] ---
+
 async def get_workspace_admin_access(
     access_info: Dict[str, Any] = Depends(get_current_workspace_member)
 ) -> Dict[str, Any]:
@@ -283,6 +296,61 @@ async def get_canvas_admin_access(
         
     logger.debug(f"Akses admin DITERIMA untuk canvas {access_info['canvas']['canvas_id']} (Role: {user_role}).")
     return access_info
+
+async def get_guest_access(
+    schedule_id: UUID,
+    auth_info: dict = Depends(get_current_user_and_client) 
+) -> Dict[str, Any]:
+    """
+    Dependency Keamanan (Baru - TODO-API-5):
+    Memeriksa apakah pengguna yang login adalah TAMU (GUEST)
+    yang diundang ke 'schedule_id' ini.
+    
+    Digunakan untuk endpoint 'PATCH .../respond' (RSVP).
+    """
+    current_user: User = auth_info["user"]
+    authed_client: Client = auth_info["client"]
+
+    def sync_db_call() -> Optional[Dict[str, Any]]:
+        """Membungkus panggilan database sinkron (blocking)"""
+        try:
+            response: APIResponse = authed_client.table("schedule_guests") \
+                .select("*") \
+                .eq("schedule_id", str(schedule_id)) \
+                .eq("user_id", str(current_user.id)) \
+                .eq("response_status", RsvpStatus.pending.value)\
+                .maybe_single() \
+                .execute()
+            
+            return response.data if response.data else None
+            
+        except APIError as e:
+            logger.error(f"APIError get_guest_access: {e.message}", exc_info=True)
+            return None
+        except Exception as e:
+            logger.error(f"Error get_guest_access (sync): {e}", exc_info=True)
+            return None
+
+    try:
+        guest_data = await asyncio.to_thread(sync_db_call)
+        
+        if not guest_data:
+            logger.warning(f"Gagal get_guest_access: User {current_user.id} bukan tamu 'pending' di schedule {schedule_id}.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Anda tidak diundang ke acara ini atau sudah merespons."
+            )
+        
+        # Kembalikan info tamu dan info auth
+        return {"guest": guest_data, "user": current_user, "client": authed_client}
+
+    except Exception as e:
+        logger.error(f"Error di get_guest_access (async): {e}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail="Gagal memvalidasi akses tamu.")
+    
+
 embedding_service_instance = GeminiEmbeddingService()
 
 async def get_embedding_service() -> IEmbeddingService:
@@ -333,18 +401,214 @@ async def get_workspace_service(
     return WorkspaceService(authed_client=client, user=user)
 
 
+## calendar dependencies
+async def get_calendar_access(
+    calendar_id: UUID,
+    auth_info: dict = Depends(get_current_user_and_client)
+) -> Dict[str, Any]:
+    """
+    Dependency Keamanan (Baru):
+    Memeriksa otentikasi DAN otorisasi untuk satu 'calendar_id'.
+    
+    Fitur (Sesuai Rencana v1.2):
+    1. Mengambil kalender.
+    2. Memeriksa visibilitas (public, workspace).
+    3. Memeriksa langganan (subscription) pribadi.
+    
+    Mengembalikan dict access_info:
+    { "calendar": ..., "user": ..., "client": ..., "role": <SubscriptionRole> }
+    """
+    current_user: User = auth_info["user"]
+    authed_client: Client = auth_info["client"]
+
+    # --- 1. Ambil Data Kalender ---
+    calendar = await get_calendar_by_id(authed_client, calendar_id)
+    if not calendar:
+        logger.warning(f"Gagal get_calendar_access: Calendar {calendar_id} tidak ditemukan.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar not found.")
+
+    access_info = {"calendar": calendar, "user": current_user, "client": authed_client}
+    
+    # --- 2. Periksa Jalur Akses (Sesuai Prioritas) ---
+
+    # Jalur 1: Apakah pengguna adalah Pemilik (Owner) kalender pribadi?
+    if calendar.get("owner_user_id") and str(calendar["owner_user_id"]) == str(current_user.id):
+        logger.debug(f"Akses Kalender {calendar_id} diberikan (Jalur: Personal Owner).")
+        access_info["role"] = SubscriptionRole.owner
+        return access_info
+
+    # Jalur 2: Apakah ini Kalender Publik?
+    if calendar.get("visibility") == CalendarVisibility.public.value:
+        logger.debug(f"Akses Kalender {calendar_id} diberikan (Jalur: Public).")
+        access_info["role"] = SubscriptionRole.viewer # Akses publik selalu read-only
+        return access_info
+
+    # Jalur 3: Apakah ini Kalender Workspace?
+    workspace_id_str = calendar.get("workspace_id")
+    if workspace_id_str:
+        membership = await check_user_membership(authed_client, UUID(workspace_id_str), current_user.id)
+        if membership:
+            # Pengguna adalah anggota workspace
+            if calendar.get("visibility") == CalendarVisibility.workspace.value:
+                logger.debug(f"Akses Kalender {calendar_id} diberikan (Jalur: Workspace Member + Visibility).")
+                # Terjemahkan role workspace ke role kalender
+                ws_role = membership.get("role", MemberRole.guest.value)
+                access_info["role"] = SubscriptionRole.editor if ws_role == MemberRole.admin.value else SubscriptionRole.viewer
+                return access_info
+            
+            # Fallback: Jika visibility 'private' tapi di dalam workspace,
+            # kita harus cek 'CalendarSubscriptions' (Jalur 4)
+            pass 
+
+    # Jalur 4: Apakah pengguna diundang secara spesifik? (Invite Pribadi)
+    subscription = await get_user_subscription(authed_client, current_user.id, calendar_id)
+    if subscription:
+        sub_role = subscription.get("role", SubscriptionRole.viewer.value)
+        logger.debug(f"Akses Kalender {calendar_id} diberikan (Jalur: Invite/Subscription). Role: {sub_role}")
+        access_info["role"] = sub_role
+        return access_info
+
+    # Fallback: Jika semua gagal
+    logger.warning(f"Akses DITOLAK untuk user {current_user.id} ke kalender {calendar_id}.")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this calendar.")
+
+
+async def get_calendar_editor_access(
+    access_info: Dict[str, Any] = Depends(get_calendar_access)
+) -> Dict[str, Any]:
+    """
+    Dependency Keamanan (Baru - Lebih Ketat):
+    Memastikan pengguna memiliki hak 'owner' atau 'editor' di kalender.
+    Ini akan melindungi endpoint POST, PATCH, dan DELETE.
+    """
+    user_role = access_info.get("role")
+    
+    # Tentukan role apa yang boleh mengedit
+    admin_roles = [SubscriptionRole.owner.value, SubscriptionRole.editor.value] 
+    
+    if user_role not in admin_roles:
+        calendar_id = access_info['calendar']['calendar_id']
+        logger.warning(f"Akses Editor DITOLAK ke kalender {calendar_id}. Role pengguna: {user_role}.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must be an owner or editor of this calendar to perform this action."
+        )
+        
+    logger.debug(f"Akses Editor DITERIMA untuk kalender {access_info['calendar']['calendar_id']} (Role: {user_role}).")
+    return access_info
+
+async def get_schedule_access(
+    schedule_id: UUID,
+    # Panggil dependency 'get_current_user' untuk auth
+    auth_info: dict = Depends(get_current_user_and_client) 
+) -> Dict[str, Any]:
+    """
+    Dependency Keamanan (Baru - TODO-DEP-3):
+    Memeriksa apakah pengguna memiliki akses ke 'schedule_id'
+    dengan cara memeriksa izin mereka di 'calendar_id' induk.
+    
+    Mengembalikan dict access_info:
+    { "schedule": ..., "calendar": ..., "user": ..., "client": ..., "role": ... }
+    """
+    current_user: User = auth_info["user"]
+    authed_client: Client = auth_info["client"]
+
+    # 1. Ambil data Acara (Schedule)
+    schedule = await get_schedule_by_id(authed_client, schedule_id)
+    if not schedule:
+        logger.warning(f"Gagal get_schedule_access: Schedule {schedule_id} tidak ditemukan.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found.")
+        
+    calendar_id = schedule.get("calendar_id")
+    if not calendar_id:
+         raise HTTPException(status_code=500, detail="Integritas data error: Acara tidak memiliki kalender.")
+
+    try:
+        # 2. Panggil dependency 'get_calendar_access'
+        # Ini akan menjalankan semua 4 jalur keamanan (Owner, Public, Workspace, Invite)
+        # dan melempar 403/404 jika pengguna tidak punya akses ke kalender induk.
+        calendar_access_info = await get_calendar_access(
+            calendar_id, auth_info
+        )
+        
+        # 3. Gabungkan info dan kembalikan
+        logger.debug(f"Akses Schedule {schedule_id} diberikan (via Calendar {calendar_id}).")
+        
+        # Gabungkan dict
+        access_info = {
+            "schedule": schedule,
+            **calendar_access_info 
+        }
+        return access_info
+
+    except HTTPException as e:
+        # Jika 'get_calendar_access' gagal (403/404), teruskan error-nya
+        logger.warning(f"Gagal get_schedule_access: Akses ditolak ke kalender induk {calendar_id}.")
+        raise e
+    
+
+async def get_freebusy_service(
+    auth_info: Dict[str, Any] = Depends(get_current_user_and_client),
+) -> FreeBusyService:
+    """Dependency injector untuk FreeBusyService."""
+    return FreeBusyService(auth_info=auth_info)
+
+async def get_calendar_service(
+    auth_info: Dict[str, Any] = Depends(get_current_user_and_client),
+) -> CalendarService:
+    """Dependency injector untuk CalendarService."""
+    return CalendarService(auth_info=auth_info)
+
+async def get_schedule_service(
+    auth_info: Dict[str, Any] = Depends(get_current_user_and_client),
+) -> ScheduleService:
+    """Dependency injector untuk ScheduleService."""
+    return ScheduleService(auth_info=auth_info)
+
+async def get_subscription_service(
+    auth_info: Dict[str, Any] = Depends(get_current_user_and_client),
+) -> SubscriptionService:
+    """Dependency injector untuk SubscriptionService."""
+    return SubscriptionService(auth_info=auth_info)
+
+async def get_guest_service(
+    auth_info: Dict[str, Any] = Depends(get_current_user_and_client),
+) -> GuestService:
+    """Dependency injector untuk GuestService."""
+    return GuestService(auth_info=auth_info)
+
+async def get_view_service(
+    auth_info: Dict[str, Any] = Depends(get_current_user_and_client),
+) -> ViewService:
+    """Dependency injector untuk ViewService."""
+    return ViewService(auth_info=auth_info)
+
+
 AuthInfoDep = Annotated[Dict[str, Any], Depends(get_current_user_and_client)]
 EmbeddingServiceDep = Annotated[IEmbeddingService, Depends(get_embedding_service)]
-CanvasAccessDep = Annotated[Dict[str, Any], Depends(get_canvas_access)] 
-WorkspaceMemberDep = Annotated[Dict[str, Any], Depends(get_current_workspace_member)]
 JudgeChainDep = Annotated[Runnable, Depends(get_judge_chain_singleton)]
 JudgeLLMDep = Annotated[ChatGoogleGenerativeAI, Depends(get_judge_chain_singleton)]
+
+# --- Layanan ---
 ConversationListServiceDep = Annotated[ConversationListService, Depends(get_conversation_list_service)]
 ConversationMessagesServiceDep = Annotated[ConversationMessagesService, Depends(get_conversation_messages_service)]
 StreamingTitleServiceDep = Annotated[TitleStreamService, Depends(get_streaming_title_service)]
 CanvasListServiceDep = Annotated[CanvasListService, Depends(get_canvas_list_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 WorkspaceServiceDep = Annotated[WorkspaceService, Depends(get_workspace_service)]
-CanvasAdminAccessDep = Annotated[Dict[str, Any], Depends(get_canvas_admin_access)]
-WorkspaceAdminAccessDep = Annotated[Dict[str, Any], Depends(get_workspace_admin_access)]
+FreeBusyServiceDep = Annotated[FreeBusyService, Depends(get_freebusy_service)]
+CalendarServiceDep = Annotated[CalendarService, Depends(get_calendar_service)]
+ScheduleServiceDep = Annotated[ScheduleService, Depends(get_schedule_service)]
+SubscriptionServiceDep = Annotated[SubscriptionService, Depends(get_subscription_service)]
+GuestServiceDep = Annotated[GuestService, Depends(get_guest_service)]
+ViewServiceDep = Annotated[ViewService, Depends(get_view_service)]
 
+# --- Keamanan Resource (Lama) ---
+CanvasAccessDep = Annotated[Dict[str, Any], Depends(get_canvas_access)] 
+CanvasAdminAccessDep = Annotated[Dict[str, Any], Depends(get_canvas_admin_access)]
+WorkspaceMemberDep = Annotated[Dict[str, Any], Depends(get_current_workspace_member)] 
+WorkspaceAdminAccessDep = Annotated[Dict[str, Any], Depends(get_workspace_admin_access)]
+ScheduleAccessDep = Annotated[Dict[str, Any], Depends(get_schedule_access)]
+GuestAccessDep = Annotated[Dict[str, Any], Depends(get_guest_access)]
+CalendarAccessDep = Annotated[Dict[str, Any], Depends(get_calendar_access)]
+CalendarEditorAccessDep = Annotated[Dict[str, Any], Depends(get_calendar_editor_access)]
