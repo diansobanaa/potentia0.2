@@ -56,6 +56,8 @@ async def create_new_schedule(
     - Wajib 'original_timezone' (misal: 'Asia/Jakarta').
     - Waktu dikonversi dan disimpan sebagai UTC.
     - Memicu background job untuk ekspansi RRULE (jika ada).
+
+    KAPAN DIGUNAKAN: Di formulir pembuatan acara Kalender.
     """
     calendar_id = access_info["calendar"]["calendar_id"]
     
@@ -100,6 +102,8 @@ async def get_schedule_details(
     Keamanan:
     Hanya pengguna yang memiliki akses ke kalender induk
     (via Owner, Workspace, atau Invite) yang dapat melihat acara ini.
+
+    KAPAN DIGUNAKAN: Saat pengguna mengklik acara di kalender untuk melihat detail pop-up.
     """
     # Dependency 'get_schedule_access' sudah melakukan:
     # 1. Validasi Auth

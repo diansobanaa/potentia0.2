@@ -47,12 +47,17 @@ async def create_new_calendar(
     auth_info: AuthInfoDep       # Diperlukan oleh service
 ):
     """
-    Membuat "wadah" kalender baru.
+    Membuat "wadah" kalender baru. Pembuat otomatis ditambahkan sebagai 'owner'
     
     Fitur:
     - Jika 'workspace_id' disediakan, kalender ini milik workspace.
     - Jika tidak, kalender ini bersifat pribadi ('owner_user_id' diisi otomatis).
     - Pembuat otomatis ditambahkan sebagai 'owner' di 'CalendarSubscriptions'.
+    
+    INPUT: CalendarCreate (name: str, workspace_id: Optional[UUID]).
+    OUTPUT: Calendar (ID, name, owner/workspace ID).
+    
+    KAPAN DIGUNAKAN: Di UI Kalender saat pengguna membuat kalender baru.
     """
     try:
         new_calendar_data = await service.create_new_calendar(payload)

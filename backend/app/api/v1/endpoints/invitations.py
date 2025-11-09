@@ -43,6 +43,10 @@ async def respond_to_workspace_invite(
     1. Pengguna menerima email/notifikasi.
     2. Pengguna login ke aplikasi.
     3. Frontend mengirim 'token' dan 'action' ke endpoint ini.
+    INPUT: WorkspaceInvitationRespond (token: str, action: InvitationAction ['accept'/'reject']).
+    OUTPUT: Dict[str, Any] (Data anggota baru jika diterima, atau {"status": "rejected"}).
+    
+    KAPAN DIGUNAKAN: Dipanggil oleh klien (setelah pengguna mengklik link di email dan login) untuk memproses token undangan.
     """
     user = auth_info["user"]
     client = auth_info["client"]

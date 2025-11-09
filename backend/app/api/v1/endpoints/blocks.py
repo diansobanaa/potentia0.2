@@ -37,6 +37,11 @@ async def create_new_block_endpoint(
 ):
     """
     Endpoint untuk membuat block baru beserta embeddingnya.
+    
+    INPUT: BlockCreate (type: BlockType, content: str, y_order: float).
+    OUTPUT: Block (Block_id, content, y_order, ai_metadata).
+    
+    KAPAN DIGUNAKAN: Di Canvas Editor saat pengguna menekan Enter (membuat block baru) atau memasukkan konten.
     """
     logger.info(f"Attempting to create block in canvas {canvas_id}")
     authed_client = access_info["client"]
@@ -81,7 +86,16 @@ async def update_block_content_endpoint(
     access_info: AuthInfoDep, # <-- DIUBAH
     embedding_service: EmbeddingServiceDep # <-- DIUBAH: Inject service
 ):
-    """Endpoint untuk memperbarui block. Jika konten berubah, embedding juga diperbarui."""
+    """
+    Endpoint untuk memperbarui block. Jika konten berubah, embedding juga diperbarui di background.
+    
+    INPUT: BlockUpdate (content: Optional[str], y_order: Optional[float]).
+    OUTPUT: Block (Objek block yang telah diperbarui).
+    
+    KAPAN DIGUNAKAN: Di Canvas Editor saat pengguna mengetik (throttled save) atau menyeret block (mengubah y_order).
+    
+    NOTE: KITA BELUM TAHU DATA AKAN DITAMPILKAN SEPERTI APA DALAM CANVAS
+    """
     logger.info(f"Attempting to update block {block_id} in canvas {canvas_id}")
     authed_client = access_info["client"]
     update_payload = block_update.model_dump(mode='json', exclude_unset=True)

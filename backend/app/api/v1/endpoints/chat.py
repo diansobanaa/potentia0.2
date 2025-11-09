@@ -44,8 +44,12 @@ async def handle_chat(
     judge_chain: JudgeChainDep
 ):
     """
-    Endpoint utama (JSON non-streaming) untuk semua interaksi chat pengguna.
+    Endpoint utama (JSON non-streaming) untuk semua interaksi chat pengguna. Memicu orkestrasi 3-panggilan AI.
     
+    INPUT: ChatRequest (message: str, conversation_id: Optional[UUID]).
+    OUTPUT: ChatResponse (ai_response, conversation_id, thinking, extracted_user_preferences).
+    
+    KAPAN DIGUNAKAN: Setiap kali pengguna mengirim pesan ke AI Agent.
     """
     try:
         chat_service = ChatService(auth_info, embedding_service, judge_chain)
@@ -76,6 +80,10 @@ async def list_conversations(
     """
     Endpoint untuk mendapatkan daftar conversation pengguna dengan pagination.
    
+    INPUT: Query (page, size).
+    OUTPUT: PaginatedConversationListResponse (List[ConversationListItem]).
+    
+    KAPAN DIGUNAKAN: Sidebar Chat untuk memuat riwayat thread.
     """
     try:
         paginated_response = await conversation_service.get_paginated_conversations(page=page, size=size)
@@ -97,8 +105,12 @@ async def list_messages(
     size: int = Query(5, ge=1, le=100, description="Jumlah item per halaman (maks 100)")
 ):
     """
-    Endpoint untuk mendapatkan daftar pesan untuk satu conversation_id.
+    Endpoint untuk mendapatkan daftar pesan untuk satu conversation_id, dengan pagination (terbaru dahulu).
    
+    INPUT: Path (conversation_id: UUID), Query (page, size).
+    OUTPUT: PaginatedMessageListResponse (List[MessageListItem]).
+    
+    KAPAN DIGUNAKAN: Saat memuat konten thread chat yang dipilih.
     """
     try:
         paginated_response = await messages_service.get_paginated_messages(
@@ -176,6 +188,11 @@ async def update_conversation_title_manual(
 ):
     """
     Memperbarui judul percakapan secara manual.
+    
+    INPUT: Path (conversation_id), ConversationTitleUpdate (title: str).
+    OUTPUT: ConversationListItem (Objek Conversation yang diperbarui).
+    
+    KAPAN DIGUNAKAN: Saat pengguna mengklik tombol edit dan menyimpan judul baru di sidebar chat.
     """
     user = auth_info["user"]
     client = auth_info["client"]

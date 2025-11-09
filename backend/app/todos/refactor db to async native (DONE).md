@@ -1,3 +1,4 @@
+(DONE)
 📋 TO-DO List: Refaktor Penuh Asinkron (Fase 1-4)
 
 Fase 1: Migrasi Klien Database (Supabase)

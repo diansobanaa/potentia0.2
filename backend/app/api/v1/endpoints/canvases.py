@@ -40,8 +40,12 @@ async def create_canvas_in_workspace(
     member_info: WorkspaceMemberDep 
 ):
     """
-    Membuat canvas baru di dalam workspace tertentu.
-    Error handling sudah ditambahkan.
+    **Membuat kanvas baru dan mengaitkannya dengan *workspace* yang ditentukan.**
+    
+    Pengguna pembuat menjadi *owner* kanvas tersebut. 
+    
+    **Keamanan:** Membutuhkan **keanggotaan aktif** dalam *workspace* yang ditargetkan.
+    Mengembalikan objek kanvas yang baru dibuat (201 Created).
     """
     current_user = member_info["user"]
     authed_client = member_info["client"]
@@ -150,9 +154,12 @@ async def get_canvas_details(
     access_info: CanvasAccessDep 
 ):
     """
-    Mengambil detail untuk satu canvas spesifik.
-    Keamanan: 'CanvasAccessDep' sekarang aman menangani 404
-    berkat perbaikan 'maybe_single()' di 'get_canvas_by_id'.
+    Mengambil detail untuk satu canvas spesifik. Dilindungi oleh CanvasAccessDep.
+    
+    INPUT: Path (canvas_id: UUID).
+    OUTPUT: Canvas (detail Canvas, metadata, status arsip).
+    
+    KAPAN DIGUNAKAN: Dipanggil saat memuat Canvas Editor untuk memuat metadata Canvas.
     """
     return access_info["canvas"]
 
@@ -204,7 +211,11 @@ async def archive_canvas(
     access_info: CanvasAccessDep
 ):
     """
-    Mengatur status canvas menjadi 'is_archived = true' (Soft Delete).
+    **Melakukan Soft Delete pada kanvas dengan mengatur status `is_archived` menjadi `True`.**
+
+    Kanvas yang diarsip akan hilang dari daftar default dan hanya bisa dilihat di tampilan arsip.
+    
+    **Keamanan:** Membutuhkan akses **Editor** atau **Owner** ke kanvas.
     """
     canvas_id = access_info["canvas"]["canvas_id"]
     authed_client = access_info["client"]
@@ -235,7 +246,11 @@ async def restore_canvas(
     access_info: CanvasAccessDep
 ):
     """
-    Mengatur status canvas menjadi 'is_archived = false' (Memulihkan).
+    **Memulihkan kanvas dari status terarsip dengan mengatur `is_archived` menjadi `False`.**
+
+    Kanvas yang dipulihkan akan kembali muncul dalam daftar normal.
+
+    **Keamanan:** Membutuhkan akses **Editor** atau **Owner** ke kanvas.
     """
     canvas_id = access_info["canvas"]["canvas_id"]
     authed_client = access_info["client"]

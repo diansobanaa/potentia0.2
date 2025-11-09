@@ -53,6 +53,8 @@ async def get_schedule_view_for_user(
     - Sangat cepat: Membaca dari tabel 'ScheduleInstances' (pre-computed).
     - Terpadu: Mengambil acara dari SEMUA kalender yang di-subscribe pengguna.
     - Aman: Otomatis mem-filter berdasarkan 'user_id' yang login.
+    
+    KAPAN DIGUNAKAN: Saat memuat tampilan bulan/minggu/hari di UI Kalender. Kunci performa aplikasi.
     """
     
     # Fallback: Pastikan 'start' dan 'end' adalah UTC
@@ -100,6 +102,8 @@ async def get_freebusy_view_for_users(
     
     Mengembalikan:
     Dict[user_id, List[blok_sibuk]]
+
+    KAPAN DIGUNAKAN: Saat pengguna mencoba membuat rapat dan perlu mengetahui kapan rekan satu timnya sedang sibuk.
     """
     
     # Fallback: Pastikan 'start' dan 'end' adalah UTC

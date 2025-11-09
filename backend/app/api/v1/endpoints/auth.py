@@ -21,8 +21,12 @@ logger = logging.getLogger(__name__)
 @router.get("/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """
-    Endpoint untuk mendapatkan profil pengguna yang sedang login.
-   
+    Mengambil data profil lengkap (User model) untuk pengguna yang saat ini terotentikasi.
+    
+    INPUT: None (Otentikasi melalui header JWT).
+    OUTPUT: User (ID, email, nama, subscription_tier).
+    
+    KAPAN DIGUNAKAN: Dipanggil saat inisialisasi aplikasi atau setelah login/refresh sesi untuk memverifikasi keaktifan sesi dan memuat detail pengguna ke UI.
     """
     return current_user
 
@@ -34,8 +38,12 @@ async def update_users_me(
     user_service: UserServiceDep 
 ):
     """
-    Memperbarui profil pengguna yang sedang login (nama, email, metadata).
-    Keamanan: Pengguna hanya dapat memperbarui data mereka sendiri.
+    Memperbarui atribut tertentu dari profil pengguna yang sedang login (nama, email, metadata).
+    
+    INPUT: UserUpdate (Opsional: name, email, metadata: {phone_number: str}).
+    OUTPUT: User (Objek pengguna yang telah diperbarui).
+    
+    KAPAN DIGUNAKAN: Di halaman 'Settings' pengguna saat memperbarui informasi profil. Memerlukan sinkronisasi antara tabel 'auth.users' dan 'public.Users'.
     """
     try:
         updated_user_data = await user_service.update_user_profile(payload)

@@ -84,6 +84,11 @@ async def invite_member_to_canvas(
     Saat ini, endpoint ini HANYA mendukung invite via 'user_id'. 
     Logika invite via 'email' (membuat token di tabel CanvasInvitations) 
     perlu ditambahkan di masa depan.
+
+    INPUT: CanvasMemberInvite (user_id: UUID, role: CanvasRole).
+    OUTPUT: Dict[str, Any] (Data CanvasAccess yang baru dibuat/diperbarui).
+    
+    KAPAN DIGUNAKAN: Di Menu 'Share' Canvas untuk memberikan akses ke pengguna internal.
     """
     canvas_id = access_info["canvas"]["canvas_id"]
     authed_client = access_info["client"]

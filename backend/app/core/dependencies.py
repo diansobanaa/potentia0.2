@@ -128,8 +128,7 @@ async def get_current_user_and_client(
         )
         # ---------------------------------------------
         
-        # 'auth' sekarang ada karena 'authed_client' adalah objek Klien asli
-        authed_client.auth.set_session(access_token=token, refresh_token="dummy_refresh_token")
+        await authed_client.auth.set_session(access_token=token, refresh_token="dummy_refresh_token")
 
         profile_response = await authed_client.table("Users") \
             .select("*") \

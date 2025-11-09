@@ -27,6 +27,14 @@ async def create_workspace(
     workspace_data: WorkspaceCreate,
     service: WorkspaceServiceDep
 ):
+    """
+    Membuat Workspace baru dan secara otomatis menetapkan pengguna yang sedang login sebagai Owner/Admin.
+    
+    INPUT: WorkspaceCreate (name: str, type: WorkspaceType).
+    OUTPUT: Workspace (ID, owner_user_id, name).
+    
+    KAPAN DIGUNAKAN: Di Dashboard atau modul kreasi Workspace.
+    """
     try:
         new_workspace = await service.create_new_workspace(workspace_data) 
         return new_workspace
@@ -42,7 +50,14 @@ async def list_my_workspaces(
     page: int = Query(1, ge=1, description="Nomor halaman, dimulai dari 1"),
     size: int = Query(20, ge=1, le=100, description="Jumlah item per halaman (maks 100)")
 ):
-    """Mengambil daftar semua workspace di mana pengguna adalah anggota (paginasi)."""
+    """
+    Mengambil daftar semua workspace di mana pengguna adalah anggota, dengan pagination.
+    
+    INPUT: Query (page, size).
+    OUTPUT: PaginatedWorkspaceListResponse (items: List[Workspace], total, total_pages).
+    
+    KAPAN DIGUNAKAN: Sidebar navigasi utama atau halaman Dashboard untuk memuat daftar ruang kerja.
+    """
     try:
         # [DIUBAH] Memanggil fungsi service paginasi yang baru
         return await service.get_paginated_user_workspaces(page=page, size=size)
@@ -58,6 +73,11 @@ async def get_workspace(
     member_info: WorkspaceMemberDep,
     service: WorkspaceServiceDep
 ):
+    """
+    **Mengambil detail lengkap satu *workspace* berdasarkan `workspace_id`.**
+
+    **Keamanan:** Memerlukan **keanggotaan aktif** dalam *workspace* tersebut (diperiksa oleh dependency `WorkspaceMemberDep`).
+    """
     try:
         return await service.get_workspace_details(workspace_id)
     except NotFoundError as e:
@@ -74,6 +94,13 @@ async def update_workspace(
     member_info: WorkspaceMemberDep,
     service: WorkspaceServiceDep
 ):
+    """
+    **Memperbarui metadata *workspace* (misalnya, nama atau ikon).**
+
+    Hanya field yang disediakan di *payload* yang akan diperbarui.
+
+    **Keamanan:** Memerlukan peran **Admin** dalam *workspace* tersebut.
+    """
     try:
         updated_workspace = await service.update_workspace_details(workspace_id, payload)
         return updated_workspace
@@ -92,6 +119,14 @@ async def delete_workspace(
     member_info: WorkspaceMemberDep,
     service: WorkspaceServiceDep
 ):
+    """
+    **Menghapus *workspace* secara permanen (Hard Delete).**
+    
+    Semua data terkait (*members*, *canvases*, dll.) akan dihapus.
+
+    **Keamanan:** Memerlukan peran **Admin**. Penghapusan akan **gagal** jika pengguna
+    bukan *owner* (sesuai logika service).
+    """
     try:
         success = await service.delete_workspace(workspace_id)
         if not success:
