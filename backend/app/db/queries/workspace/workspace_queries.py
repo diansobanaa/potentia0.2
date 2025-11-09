@@ -275,13 +275,29 @@ async def create_workspace_invitation(
         return response.data[0]
         
     except APIError as e:
-        logger.error(f"APIError create_workspace_invitation (async): {e.message}", exc_info=True)
-        if "invite_conflict" in str(e): raise
-        raise DatabaseError("invite_create_async_api", e.message)
+        error_msg = getattr(e, 'message', str(e))
+        logger.error(
+            f"APIError create_workspace_invitation (async): {error_msg}",
+            exc_info=True
+        )
+        # Check for conflict errors in error message
+        error_str = str(e).lower() + error_msg.lower()
+        if "invite_conflict" in error_str or "already exists" in error_str:
+            raise DatabaseError(
+                "invite_conflict",
+                "Pengguna ini sudah memiliki undangan atau sudah menjadi anggota."
+            )
+        raise DatabaseError("invite_create_async_api", error_msg)
+    except (DatabaseError, NotFoundError, ValueError) as e:
+        # Re-raise known exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Error create_workspace_invitation (async): {e}", exc_info=True)
-        if isinstance(e, (DatabaseError, NotFoundError, ValueError)): raise
-        raise DatabaseError("invite_create_async_general", str(e))
+        error_msg = str(e)
+        logger.error(
+            f"Error create_workspace_invitation (async): {error_msg}",
+            exc_info=True
+        )
+        raise DatabaseError("invite_create_async_general", error_msg)
 
 async def list_workspace_members(
     authed_client: AsyncClient, # <-- Tipe diubah

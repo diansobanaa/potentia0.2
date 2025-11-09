@@ -219,7 +219,7 @@ async def archive_canvas(
     """
     canvas_id = access_info["canvas"]["canvas_id"]
     authed_client = access_info["client"]
-
+    
     try:
         updated_canvas = await set_canvas_archived_status(
             authed_client=authed_client,

@@ -26,9 +26,12 @@ class InvitationType(str, Enum):
     """
     Mendefinisikan tipe undangan di 'WorkspaceInvitations'.
     Ini diperlukan untuk memperbaiki 'violates not-null constraint'.
+    
+    Note: Format enum harus sesuai dengan yang didefinisikan di database.
+    Biasanya menggunakan lowercase atau format yang sesuai dengan konvensi.
     """
+    USER_ID = "invite"
     EMAIL = "EMAIL"
-    USER_ID = "USER_ID"
 
 class InvitationAction(str, Enum):
     """Mendefinisikan tindakan yang valid untuk merespons undangan."""

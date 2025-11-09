@@ -1,3 +1,7 @@
+-- Cara mengektrak schema dari database
+-- Buka Schema Visualizer di Supabase
+-- Copy as SQL di Pojok Kanan Atas
+
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
@@ -87,31 +91,6 @@ CREATE TABLE public.MessageEmbeddings (
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT MessageEmbeddings_pkey PRIMARY KEY (embedding_id)
 );
-CREATE TABLE public.ScheduleGuests (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  schedule_id uuid NOT NULL,
-  user_id uuid NOT NULL,
-  response_status USER-DEFINED NOT NULL DEFAULT 'pending'::invitation_status,
-  CONSTRAINT ScheduleGuests_pkey PRIMARY KEY (id),
-  CONSTRAINT ScheduleGuests_schedule_id_fkey FOREIGN KEY (schedule_id) REFERENCES public.Schedules(schedule_id),
-  CONSTRAINT ScheduleGuests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.Users(user_id)
-);
-CREATE TABLE public.Schedules (
-  schedule_id uuid NOT NULL DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL,
-  creator_user_id uuid,
-  title text NOT NULL,
-  start_time timestamp with time zone NOT NULL,
-  end_time timestamp with time zone NOT NULL,
-  rrule text,
-  block_id uuid,
-  schedule_metadata jsonb,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT Schedules_pkey PRIMARY KEY (schedule_id),
-  CONSTRAINT Schedules_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.Workspaces(workspace_id),
-  CONSTRAINT Schedules_creator_user_id_fkey FOREIGN KEY (creator_user_id) REFERENCES public.Users(user_id),
-  CONSTRAINT Schedules_block_id_fkey FOREIGN KEY (block_id) REFERENCES public.Blocks(block_id)
-);
 CREATE TABLE public.SystemPrompts (
   system_prompt_id uuid NOT NULL DEFAULT gen_random_uuid(),
   name character varying NOT NULL,
@@ -169,6 +148,29 @@ CREATE TABLE public.Workspaces (
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT Workspaces_pkey PRIMARY KEY (workspace_id),
   CONSTRAINT Workspaces_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.Users(user_id)
+);
+CREATE TABLE public.calendar_subscriptions (
+  subscription_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  calendar_id uuid NOT NULL,
+  role USER-DEFINED NOT NULL DEFAULT 'viewer'::calendar_subscription_role_enum,
+  metadata jsonb,
+  CONSTRAINT calendar_subscriptions_pkey PRIMARY KEY (subscription_id),
+  CONSTRAINT calendar_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.Users(user_id),
+  CONSTRAINT calendar_subscriptions_calendar_id_fkey FOREIGN KEY (calendar_id) REFERENCES public.calendars(calendar_id)
+);
+CREATE TABLE public.calendars (
+  calendar_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  owner_user_id uuid,
+  workspace_id uuid,
+  visibility USER-DEFINED NOT NULL DEFAULT 'private'::calendar_visibility_enum,
+  metadata jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT calendars_pkey PRIMARY KEY (calendar_id),
+  CONSTRAINT calendars_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.Users(user_id),
+  CONSTRAINT calendars_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.Workspaces(workspace_id)
 );
 CREATE TABLE public.context (
   context_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -290,6 +292,53 @@ CREATE TABLE public.requeried_user_prompt (
   model_used character varying,
   CONSTRAINT requeried_user_prompt_pkey PRIMARY KEY (id),
   CONSTRAINT requeried_user_prompt_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.messages(message_id)
+);
+CREATE TABLE public.schedule_guests (
+  guest_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  schedule_id uuid NOT NULL,
+  user_id uuid,
+  guest_email text,
+  response_status USER-DEFINED NOT NULL DEFAULT 'pending'::rsvp_status_enum,
+  role USER-DEFINED NOT NULL DEFAULT 'guest'::guest_role_enum,
+  CONSTRAINT schedule_guests_pkey PRIMARY KEY (guest_id),
+  CONSTRAINT schedule_guests_schedule_id_fkey FOREIGN KEY (schedule_id) REFERENCES public.schedules(schedule_id),
+  CONSTRAINT schedule_guests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.Users(user_id)
+);
+CREATE TABLE public.schedule_instances (
+  instance_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  schedule_id uuid NOT NULL,
+  calendar_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  start_time timestamp with time zone NOT NULL,
+  end_time timestamp with time zone NOT NULL,
+  is_exception boolean NOT NULL DEFAULT false,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT schedule_instances_pkey PRIMARY KEY (instance_id),
+  CONSTRAINT schedule_instances_schedule_id_fkey FOREIGN KEY (schedule_id) REFERENCES public.schedules(schedule_id),
+  CONSTRAINT schedule_instances_calendar_id_fkey FOREIGN KEY (calendar_id) REFERENCES public.calendars(calendar_id),
+  CONSTRAINT schedule_instances_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.Users(user_id)
+);
+CREATE TABLE public.schedules (
+  schedule_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  calendar_id uuid NOT NULL,
+  title text NOT NULL,
+  start_time timestamp with time zone NOT NULL,
+  end_time timestamp with time zone NOT NULL,
+  schedule_metadata jsonb,
+  rrule text,
+  rdate ARRAY,
+  exdate ARRAY,
+  parent_schedule_id uuid,
+  creator_user_id uuid NOT NULL,
+  is_deleted boolean NOT NULL DEFAULT false,
+  deleted_at timestamp with time zone,
+  version integer NOT NULL DEFAULT 1,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT schedules_pkey PRIMARY KEY (schedule_id),
+  CONSTRAINT schedules_calendar_id_fkey FOREIGN KEY (calendar_id) REFERENCES public.calendars(calendar_id),
+  CONSTRAINT schedules_parent_schedule_id_fkey FOREIGN KEY (parent_schedule_id) REFERENCES public.schedules(schedule_id),
+  CONSTRAINT schedules_creator_user_id_fkey FOREIGN KEY (creator_user_id) REFERENCES public.Users(user_id)
 );
 CREATE TABLE public.summary_memory (
   summary_id uuid NOT NULL DEFAULT gen_random_uuid(),
