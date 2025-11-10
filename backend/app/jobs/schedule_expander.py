@@ -12,7 +12,7 @@ import pytz
 
 # --- PERBAIKAN: Impor klien DB dan Redis async ---
 from app.db.supabase_client import get_supabase_admin_async_client
-from app.services.redis_rate_limiter import redis_client # (Sekarang async)
+from app.services.redis_rate_limiter import rate_limiter # (Sekarang async)
 # ---------------------------------------------------
 
 # Impor Kueri (sekarang semuanya async)
@@ -69,7 +69,7 @@ async def expand_and_populate_instances(schedule_id: UUID):
     
     # --- PERBAIKAN: Panggil Redis async ---
     lock_key = f"lock:expand:{str(schedule_id)}"
-    is_locked = await redis_client.set(
+    is_locked = await rate_limiter.set(
         lock_key, "running", ex=EXPANSION_LOCK_TTL, nx=True
     )
     
@@ -141,7 +141,7 @@ async def expand_and_populate_instances(schedule_id: UUID):
             redis_keys_to_delete = [f"busy_index:{str(uid)}" for uid in user_ids_affected]
             # --- PERBAIKAN: Panggil Redis async ---
             if redis_keys_to_delete:
-                await redis_client.delete(*redis_keys_to_delete)
+                await rate_limiter.delete(*redis_keys_to_delete)
 
     except Exception as e:
         logger.error(f"[JOB] Gagal total saat ekspansi schedule {schedule_id}: {e}", exc_info=True)
@@ -149,7 +149,7 @@ async def expand_and_populate_instances(schedule_id: UUID):
     finally:
         # --- PERBAIKAN: Panggil Redis async ---
         logger.info(f"[JOB] Ekspansi selesai. Melepaskan lock untuk {schedule_id}.")
-        await redis_client.delete(lock_key)
+        await rate_limiter.delete(lock_key)
 
 
 async def expand_recurring_events_job():
@@ -157,7 +157,7 @@ async def expand_recurring_events_job():
     
     # --- PERBAIKAN: Panggil Redis async ---
     lock_key = "lock:scheduler:expand_recurring_events_job"
-    is_locked = await redis_client.set(
+    is_locked = await rate_limiter.set(
         lock_key, "running", ex=300, nx=True 
     )
     
@@ -186,7 +186,7 @@ async def expand_recurring_events_job():
          logger.error(f"[JOB] Error di 'expand_recurring_events_job' (loop utama): {e}", exc_info=True)
     finally:
         # --- PERBAIKAN: Panggil Redis async ---
-        await redis_client.delete(lock_key)
+        await rate_limiter.delete(lock_key)
 
 
 async def cleanup_redis_busy_index_job():
@@ -195,7 +195,7 @@ async def cleanup_redis_busy_index_job():
         thirty_days_ago_ts = int((datetime.now(pytz.UTC) - timedelta(days=30)).timestamp())
         
         # --- PERBAIKAN: Panggil Redis async ---
-        keys = await redis_client.keys('busy_index:*')
+        keys = await rate_limiter.keys('busy_index:*')
         
         if not keys:
             logger.info("[JOB] Tidak ada cache free/busy untuk dibersihkan.")
@@ -203,7 +203,7 @@ async def cleanup_redis_busy_index_job():
 
         logger.info(f"[JOB] Membersihkan {len(keys)} cache free/busy (async)...")
         
-        async with redis_client.pipeline() as pipe:
+        async with rate_limiter.pipeline() as pipe:
             for key in keys:
                 pipe.zremrangebyscore(key, 0, thirty_days_ago_ts)
             await pipe.execute()

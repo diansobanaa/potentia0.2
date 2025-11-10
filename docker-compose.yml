@@ -1,25 +1,6 @@
-# Hapus baris 'version: 3.8' jika Anda mau, ini sudah usang
+# File: docker-compose.yml
+# (Perbarui service pgbouncer)
 services:
-  # --- Layanan Frontend (Next.js) ---
-  #frontend:
-    # Menggunakan image, bukan build, karena kita tidak punya Dockerfile
-    #image: node:20-alpine
-    #command: sh -c "npm install && npm run dev"
-    #working_dir: /app
-    #volumes:
-    #  - ./frontend:/app
-    #  - /app/node_modules
-    #ports:
-    #  - "3000:3000"
-    #environment:
-    #  # Env vars dari file root Anda
-    #  - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-    #  - NEXT_PUBLIC_SUPABASE_URL=https://blcvobkkfimyisuhxvbu.supabase.co
-    ##  - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsY3ZvYmtrZmlteWlzdWh4dmJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5NzY5MDksImV4cCI6MjA3NjU1MjkwOX0.N-k4H9Z5EVu5KazU12qpWl0d6fj5cODdLHJ_xUwiK98
-    #depends_on:
-    #  - backend
-    #stdin_open: true
-    #tty: true
 
   # --- Layanan Backend (Python/FastAPI) ---
   backend:
@@ -51,6 +32,48 @@ services:
     volumes:
       # Menggunakan volume 'redis_data' untuk persistensi
       - redis_data:/data
+  
+
+
+  pgbouncer:
+    # [PERBAIKAN 1] Kita gunakan image ini, yang kita tahu ADA
+    image: pgbouncer/pgbouncer:latest
+    container_name: potentia_pgbouncer
+    ports:
+      - "6432:6432"
+      
+    # [PERBAIKAN 2] Hapus 'volumes'. Kita tidak akan me-mount file .ini lagi.
+    # volumes:
+    #   - ./infra/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini
+    #   - ./infra/userlist.txt:/etc/pgbouncer/userlist.txt
+
+    # [PERBAIKAN 3] Tambahkan environment variable untuk mengkonfigurasi pgbouncer
+    environment:
+      # --- Info Database Supabase ---
+      # (Diambil dari .env dan pgbouncer.ini Anda)
+      - DATABASES_HOST=db.blcvobkkfimyisuhxvbu.supabase.co
+      - DATABASES_PORT=5432
+      - DATABASES_DBNAME=potentiav2
+      - DATABASES_USER=postgres
+      - DATABASES_PASSWORD=Suarakodok1 # <-- Ganti dengan password asli Anda
+      - DATABASES_SSLMODE=require # <-- Wajib untuk Supabase
+
+      # --- Pengaturan Pool (dari pgbouncer.ini) ---
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=200
+      - DEFAULT_POOL_SIZE=20
+      - MIN_POOL_SIZE=5
+      - RESERVE_POOL_SIZE=5
+      - SERVER_RESET_QUERY=DISCARD ALL
+      - AUTH_TYPE=md5
+      
+      # --- Pengaturan PgBouncer ---
+      - LISTEN_ADDR=0.0.0.0
+      - LISTEN_PORT=6432
+      - ADMIN_USERS=pgbouncer_admin
+      - STATS_USERS=pgbouncer_stats
+      
+    restart: always
 
 # Mendefinisikan volume yang digunakan di atas
 volumes:

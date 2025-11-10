@@ -67,3 +67,58 @@ async def update_users_me(
     except Exception as e:
         logger.error(f"Error tidak terduga di update_users_me: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Terjadi kesalahan internal.")
+
+@router.post(
+    "/refresh",
+    response_model=Dict[str, str],
+    summary="Refresh JWT access token"
+)
+async def refresh_access_token(
+    refresh_token: str = Body(..., embed=True)
+):
+    """
+    Refresh JWT access token using a valid refresh token.
+    
+    This endpoint exchanges a valid refresh token for a new JWT access token.
+    The refresh token must be valid and not expired.
+    """
+    try:
+        # Use Supabase auth endpoint to refresh token
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
+                headers={
+                    "apikey": settings.SUPABASE_ANON_KEY,
+                    "Content-Type": "application/json"
+                },
+                json={"refresh_token": refresh_token}
+            )
+            
+            if response.status_code != 200:
+                logger.warning(f"Token refresh failed: {response.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired refresh token"
+                )
+            
+            token_data = response.json()
+            
+            return {
+                "access_token": token_data.get("access_token"),
+                "token_type": "bearer",
+                "expires_in": token_data.get("expires_in"),
+                "refresh_token": token_data.get("refresh_token")
+            }
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error during token refresh: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Failed to refresh token"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during token refresh: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
+        )

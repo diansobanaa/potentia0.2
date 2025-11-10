@@ -1,27 +1,15 @@
 # File: backend/app/core/scheduler.py
-# (Menggantikan placeholder Anda)
+# (DIPERBAIKI - Menghapus RedisJobStore yang bermasalah)
 
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.jobstores.redis import RedisJobStore
-from app.core.config import settings
+# HAPUS: from apscheduler.jobstores.redis import RedisJobStore
 
 logger = logging.getLogger(__name__)
 
-# Konfigurasi JobStore menggunakan Redis
-# Ini adalah fallback krusial: job tetap ada (persistent)
-# bahkan jika server FastAPI di-restart.
-jobstores = {
-    'default': RedisJobStore(
-        host=settings.REDIS_URL.split('//')[-1].split(':')[0],
-        port=int(settings.REDIS_URL.split(':')[-1]),
-        db=1 # Gunakan DB #1 agar terpisah dari cache (jika ada)
-    )
-}
-
-# Inisialisasi scheduler
-# Kita gunakan 'asyncio' agar terintegrasi dengan event loop FastAPI
-scheduler = AsyncIOScheduler(jobstores=jobstores)
+# PERBAIKAN: Kembali ke scheduler default (memory-based)
+# Persistence ditangani oleh logika restart di dalam worker itu sendiri
+scheduler = AsyncIOScheduler()
 
 def setup_scheduler_jobs():
     """
@@ -30,48 +18,84 @@ def setup_scheduler_jobs():
     logger.info("Mendaftarkan background jobs...")
     
     try:
-        # Impor fungsi job dari file 'jobs'
+        # Impor fungsi job dari file 'jobs' (yang sudah ada)
         from app.jobs.schedule_expander import (
             expand_recurring_events_job,
             cleanup_redis_busy_index_job,
             cleanup_old_schedule_instances_job
         )
         
-        # TODO-SVC-2: Job untuk ekspansi RRULE
-        # Dijadwalkan setiap 5 menit (bisa diubah nanti)
+        # Job yang sudah ada
         scheduler.add_job(
             expand_recurring_events_job,
             'interval',
             minutes=5,
             id='job_expand_recurring_events',
             replace_existing=True,
-            coalesce=True, # Mencegah job berjalan tumpuk jika > 5 menit
-            misfire_grace_time=300 # Toleransi 5 menit jika server mati
+            coalesce=True,
+            misfire_grace_time=300
         )
 
-        # TODO-SVC-5: Job untuk membersihkan Redis ZSET
         scheduler.add_job(
             cleanup_redis_busy_index_job,
             'cron',
-            hour=2, # Setiap jam 2 pagi
+            hour=2,
             minute=0,
             id='job_cleanup_redis_busy_index',
             replace_existing=True
         )
         
-        # Job opsional untuk membersihkan 'ScheduleInstances'
         scheduler.add_job(
             cleanup_old_schedule_instances_job,
             'cron',
-            hour=3, # Setiap jam 3 pagi
+            hour=3,
             minute=0,
             id='job_cleanup_old_instances',
             replace_existing=True
         )
 
-        logger.info("Semua background jobs berhasil didaftarkan.")
+        # --- [BARU] DAFTARKAN WORKER UNTUK KOLABORASI CANVAS ---
+        logger.info("Mendaftarkan canvas collaboration workers...")
+        
+        # Impor fungsi worker dari file 'workers'
+        from app.workers.rebalance import start_rebalance_worker
+        from app.workers.embedding import start_embedding_worker
+        from app.workers.cleanup import start_cleanup_worker
+        
+        # Job untuk Rebalance Worker
+        scheduler.add_job(
+            start_rebalance_worker,
+            'interval',
+            minutes=1,
+            id='worker_rebalance_starter',
+            replace_existing=True,
+            max_instances=1
+        )
+        
+        # Job untuk Embedding Worker
+        scheduler.add_job(
+            start_embedding_worker,
+            'interval',
+            minutes=1,
+            id='worker_embedding_starter',
+            replace_existing=True,
+            max_instances=1
+        )
+        
+        # Job untuk Cleanup Worker
+        scheduler.add_job(
+            start_cleanup_worker,
+            'cron',
+            hour=4,
+            minute=0,
+            id='worker_cleanup_periodic',
+            replace_existing=True,
+            max_instances=1
+        )
+
+        logger.info("Semua background jobs dan canvas collaboration workers berhasil didaftarkan.")
         
     except ImportError as e:
-        logger.warning(f"Gagal mengimpor 'app.jobs'. Melewatkan pendaftaran job. Error: {e}", exc_info=True)
+        logger.warning(f"Gagal mengimpor 'app.jobs' atau 'app.workers'. Melewatkan pendaftaran job. Error: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Error saat mendaftarkan background jobs: {e}", exc_info=True)

@@ -1,4 +1,4 @@
-# PARSE: 08-custom-exceptions.py
+# File: backend/app/core/exceptions.py
 from typing import Any
 
 class DataAccessError(Exception):
@@ -17,11 +17,11 @@ class RpcError(DataAccessError):
         self.message = f"Gagal memanggil RPC '{function_name}': {error}"
         super().__init__(self.message)
 
-class DatabaseError(DataAccessError):
-    """Error umum database (insert/update)."""
-    def __init__(self, operation: str, error: Any):
-        self.message = f"Operasi database '{operation}' gagal: {error}"
-        super().__init__(self.message)
+class DatabaseError(Exception):
+    def __init__(self, operation: str, details: str):
+        self.operation = operation
+        self.details = details
+        super().__init__(f"Database error during {operation}: {details}")
 
 class EmbeddingGenerationError(Exception):
     """Error ketika gagal menghasilkan embedding."""
@@ -37,9 +37,16 @@ class DatabaseError(Exception):
     pass
 
 class NotFoundError(Exception):
+    def __init__(self, entity: str, entity_id: str):
+        self.entity = entity
+        self.entity_id = entity_id
+        super().__init__(f"{entity} with ID {entity_id} not found.")
+
+class PermissionError(Exception):
     """
-    (BARU - INI YANG MEMPERBAIKI ERROR)
-    Dimunculkan ketika sebuah resource (misal: konteks, kanvas, pengguna)
-    tidak dapat ditemukan di database.
+    Dilempar ketika pengguna mencoba melakukan aksi
+    yang tidak diizinkan.
     """
-    pass
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)

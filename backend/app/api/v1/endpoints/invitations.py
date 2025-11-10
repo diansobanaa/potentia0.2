@@ -14,7 +14,7 @@ from app.models.user import User
 from app.core.dependencies import AuthInfoDep
 
 # Impor fungsi query yang baru kita buat
-from app.db.queries.workspace.workspace_queries import respond_to_workspace_invitation
+from app.db.queries.workspace import respond_to_workspace_invitation
 # Impor exceptions
 from app.core.exceptions import DatabaseError, NotFoundError
 

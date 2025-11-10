@@ -42,7 +42,7 @@ from app.services.chat_engine.llm_chat_executor import LLMExecutor
 
 if TYPE_CHECKING:
     from langchain_core.runnables import Runnable 
-    from app.services.embedding_service import EmbeddingService
+    from app.services.embedding_service import GeminiEmbeddingService
     from supabase.client import AsyncClient
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class ChatService:
     ):
         self.user: User = auth_info["user"]
         self.client: "AsyncClient" = auth_info["client"] 
-        self.embedding_service: 'EmbeddingService' = embedding_service
+        self.embedding_service: 'GeminiEmbeddingService' = embedding_service
         self.judge_chain: 'Runnable' = judge_chain
         self.context_manager = ContextManager(self.client, self.user)
         self.specialist_executor = LLMExecutor() 

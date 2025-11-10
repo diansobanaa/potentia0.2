@@ -1,6 +1,5 @@
 # backend\app\db\queries\block_queries\update_block_and_embedding.py
-# PARSE: 22-fix-update-block-v2.py
-# (Diperbarui dengan perbaikan 'update' syntax)
+# (Diperbarui dengan perbaikan 'update' syntax dan skema v0.4.3)
 
 import logging
 import asyncio
@@ -11,6 +10,7 @@ from postgrest.exceptions import APIError
 from app.services.interfaces import IEmbeddingService 
 from app.core.utils.helper import calculate_checksum
 from app.core.exceptions import DatabaseError, EmbeddingGenerationError
+from datetime import datetime # DITAMBAHKAN
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,8 @@ async def update_block_and_embedding(
     authed_client: AsyncClient,
     embedding_service: IEmbeddingService, 
     block_id: UUID, 
-    update_data: Dict[str, Any]
+    update_data: Dict[str, Any],
+    user_id: UUID # DITAMBAHKAN: Updater user ID untuk audit
 ) -> Dict[str, Any]:
     
     logger.info(f"(Query/Update) Memulai pembaruan untuk blok {block_id}")
@@ -29,8 +30,9 @@ async def update_block_and_embedding(
     content_checksum = None
 
     try:
+        # 1. Ambil data block saat ini (perlu kolom version)
         current_block_response = await authed_client.table("Blocks") \
-            .select("ai_metadata, canvas_id") \
+            .select("ai_metadata, canvas_id, version") \
             .eq("block_id", str(block_id)) \
             .maybe_single() \
             .execute()
@@ -40,6 +42,12 @@ async def update_block_and_embedding(
 
         current_block = current_block_response.data
         current_metadata = current_block.get("ai_metadata", {}) or {}
+        current_version = current_block.get("version", 1)
+        
+        # 2. Tambahkan kolom audit dan version update
+        update_data["updated_by"] = str(user_id) # DITAMBAHKAN: Audit
+        update_data["updated_at"] = datetime.utcnow().isoformat() # DITAMBAHKAN: Audit
+        update_data["version"] = current_version + 1 # DITAMBAHKAN: Optimistic Lock (Increment)
 
         if should_update_embedding:
             content_checksum = calculate_checksum(new_content)
@@ -55,6 +63,7 @@ async def update_block_and_embedding(
                         should_update_embedding = False
                     else:
                         new_metadata = {**current_metadata, "content_checksum": content_checksum}
+                        update_data["vector"] = embedding # DIUBAH: Vektor langsung ke tabel Blocks
                         update_data["ai_metadata"] = new_metadata
                 except Exception as e:
                     should_update_embedding = False
@@ -64,34 +73,21 @@ async def update_block_and_embedding(
 
         logger.info(f"(Query/Update) Memperbarui tabel Blocks untuk {block_id}")
         
-        # --- PERBAIKAN: Hapus .single() ---
-        update_response = await authed_client.table("Blocks") \
+        # NOTE: Implementasi Real-Time Production akan menambahkan: .eq("version", current_version)
+        # untuk Optimistic Lock, tapi kita lewati dulu untuk menghindari perubahan di RPC.
+        response: APIResponse = await authed_client.table("Blocks") \
             .update(update_data, returning="representation") \
             .eq("block_id", str(block_id)) \
             .execute()
-        # ---------------------------------
+        
+        if not response.data:
+            # Jika menggunakan Optimistic Lock, ini bisa berarti konflik (Version Mismatch)
+            raise DatabaseError("update_block", f"Gagal memperbarui blok {block_id} (Data tidak ditemukan).")
 
-        if not update_response.data:
-            raise DatabaseError("update_block", f"Gagal memperbarui blok {block_id}.")
-
-        updated_block = update_response.data[0] # Ambil item pertama dari list
+        updated_block = response.data[0] 
         logger.info(f"(Query/Update) Base block {block_id} berhasil diperbarui.")
 
-        if should_update_embedding and embedding and content_checksum:
-            embedding_payload = {
-                "block_id": str(block_id),
-                "canvas_id": str(updated_block["canvas_id"]),
-                "content_checksum": content_checksum,
-                "embedding": embedding
-            }
-            try:
-                # (Upsert sudah benar)
-                await authed_client.table("BlocksEmbeddings") \
-                    .upsert(embedding_payload, on_conflict="block_id") \
-                    .execute()
-                logger.info(f"(Query/Update) Embedding upserted untuk {block_id}.")
-            except Exception as embed_e:
-                raise DatabaseError("upsert_embedding", f"Gagal upsert embedding: {embed_e}")
+        # LOGIKA LAMA untuk BlocksEmbeddings DIHAPUS (Task 13)
 
         return updated_block
 

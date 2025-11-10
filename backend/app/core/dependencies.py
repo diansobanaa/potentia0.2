@@ -7,30 +7,34 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from uuid import UUID
 from typing import Union, Dict, Any, Annotated, List, Tuple, Optional
-from fastapi import Path # <-- [DITAMBAHKAN]
-
-# --- PERUBAHAN: Impor AsyncClient ---
+from fastapi import Path
 from supabase.client import AsyncClient, create_async_client
 from postgrest.exceptions import APIError
-import httpx # Tetap gunakan httpx sync untuk validasi (dibungkus)
+import httpx
 
-# ------------------------------------
-
-# Impor dari aplikasi kita
-from app.core.config import settings
-# --- PERUBAHAN: Impor async client baru ---
+from app.core.config import settings #
+from app.core.exceptions import DatabaseError, NotFoundError, PermissionError
 from app.db.supabase_client import get_supabase_admin_async_client
-# -------------------------------------------
 from app.models.user import User, SubscriptionTier
+from app.models.workspace import MemberRole
+from app.models.canvas import CanvasRole
+from app.models.schedule import CalendarVisibility, SubscriptionRole, Schedule, RsvpStatus, GuestRole
+from langchain_core.runnables import Runnable
 
-# --- Impor untuk Services ---
+# --- Impor Database Queries ---
+# (Struktur query yang baru)
+from app.db.queries.canvas import canvas_queries, canvas_member_queries
+from app.db.queries.workspace import workspace_queries
+from app.db.queries.calendar import calendar_queries
+
+
+# --- Impor Service ---
 from app.services.interfaces import IEmbeddingService
-from app.services.embedding_service import GeminiEmbeddingService
+from app.services.embedding_service import GeminiEmbeddingService #
 from app.services.chat_engine.judge_chain import get_judge_chain
 from app.services.conversations_list_service import ConversationListService
 from app.services.conversation_messages_service import ConversationMessagesService
 from app.services.title_stream_service import TitleStreamService
-from app.services.canvas_list_service import CanvasListService
 from app.services.user.user_service import UserService
 from app.services.workspace.workspace_service import WorkspaceService
 from app.services.calendar.freebusy_service import FreeBusyService
@@ -40,20 +44,10 @@ from app.services.calendar.subscription_service import SubscriptionService
 from app.services.calendar.guest_service import GuestService
 from app.services.calendar.view_service import ViewService
 
-# --- Impor untuk MODELS ---
-from app.models.workspace import MemberRole 
-from app.models.canvas import CanvasRole
-from app.models.schedule import CalendarVisibility, SubscriptionRole, Schedule
-from app.models.schedule import RsvpStatus, GuestRole
-from langchain_core.runnables import Runnable # <-- [DITAMBAHKAN]
-
-# --- Impor untuk DATABASE ---
-from app.db.queries.canvas.canvas_queries import get_canvas_by_id, check_user_canvas_access
-from app.db.queries.workspace.workspace_queries import check_user_membership
-from app.db.queries.calendar.calendar_queries import (
-    get_calendar_by_id, get_user_subscription, get_schedule_by_id,
-    get_subscription_by_id # <-- [DITAMBAHKAN] dari perbaikan IDOR
-)
+# --- [REFACTOR] Impor Service Canvas dari lokasi baru ---
+from app.services.canvas.list_service import CanvasListService
+from app.services.canvas.sync_manager import CanvasSyncManager
+from app.services.canvas.lexorank_service import LexoRankService
 
 # --- Konfigurasi Awal ---
 security = HTTPBearer(auto_error=False)
@@ -192,7 +186,10 @@ async def get_current_workspace_member(
 ):
     current_user: User = auth_info["user"]
     authed_client: AsyncClient = auth_info["client"]
-    membership = await check_user_membership(authed_client, workspace_id, current_user.id)
+    # [REFACTOR] Menggunakan fungsi query
+    membership = await workspace_queries.check_user_membership(
+        authed_client, workspace_id, current_user.id
+    )
     if not membership:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member of this workspace.")
     return {
@@ -220,41 +217,36 @@ async def get_canvas_access(
     canvas_id: UUID,
     auth_info: dict = Depends(get_current_user_or_guest)
 ) -> Dict[str, Any]:
-    current_user = auth_info["user"]
-    authed_client: AsyncClient = auth_info["client"]
-    if isinstance(current_user, GuestUser):
-        raise HTTPException(status_code=401, detail="Authentication required.")
-
-    canvas = await get_canvas_by_id(authed_client, canvas_id) 
-    if not canvas:
-        raise HTTPException(status_code=404, detail="Canvas not found.")
-    access_info = {"canvas": canvas, "user": current_user, "client": authed_client}
+    """
+    [PERBAIKAN] Blok try/except sekarang menangkap
+    NotFoundError dan PermissionError.
+    """
+    service = CanvasListService(auth_info)
     
-    if canvas.get("user_id") and str(canvas["user_id"]) == str(current_user.id):
-        access_info["role"] = "owner"
+    try:
+        access_info = await service.get_canvas_with_access(canvas_id)
+        access_info["client"] = auth_info["client"]
+        access_info["user"] = auth_info["user"]
         return access_info
-    if canvas.get("workspace_id"):
-        membership = await check_user_membership(authed_client, UUID(canvas["workspace_id"]), current_user.id)
-        if membership:
-            workspace_role = membership.get("role", MemberRole.guest.value)
-            access_info["role"] = workspace_role 
-            return access_info
-    direct_access = await check_user_canvas_access(authed_client, canvas_id, current_user.id)
-    if direct_access:
-        canvas_role = direct_access.get("role", CanvasRole.viewer.value)
-        access_info["role"] = canvas_role
-        return access_info
-
-    raise HTTPException(status_code=403, detail="Access denied to this canvas.")
+        
+    except NotFoundError as e: # <-- SEKARANG TERDEFINISI
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e: # <-- SEKARANG TERDEFINISI
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 async def get_canvas_admin_access(
     access_info: Dict[str, Any] = Depends(get_canvas_access)
 ) -> Dict[str, Any]:
-    # (Logika tidak berubah)
     user_role = access_info.get("role")
-    admin_roles = ["owner", MemberRole.admin.value] 
+    # Role 'owner' atau 'admin' (dari workspace)
+    admin_roles = ["owner", "admin", MemberRole.admin.value] 
     if user_role not in admin_roles:
-        raise HTTPException(...)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses admin ke canvas ini diperlukan."
+        )
     return access_info
 
 async def get_guest_access(
@@ -368,8 +360,7 @@ async def get_subscription_delete_access(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Anda tidak memiliki izin untuk menghapus anggota ini."
     )
-
-# (Injeksi service embedding dan judge chain tidak berubah)
+# --- Injeksi Service (Tidak Berubah) ---
 embedding_service_instance = GeminiEmbeddingService()
 async def get_embedding_service() -> IEmbeddingService:
     yield embedding_service_instance
@@ -381,6 +372,7 @@ def get_judge_chain_singleton() -> Runnable:
         logger.info("Menginisialisasi Judge Chain Singleton...")
         judge_chain_instance = get_judge_chain() 
     yield judge_chain_instance
+    
 async def get_conversation_list_service(
     auth_info: Dict[str, Any] = Depends(get_current_user_and_client), 
 ) -> ConversationListService:
@@ -401,12 +393,16 @@ async def get_canvas_list_service(
 ) -> CanvasListService:
     return CanvasListService(auth_info=auth_info)
 
+# [BARU] Injeksi untuk CanvasSyncManager
+canvas_sync_manager_instance = CanvasSyncManager()
+async def get_canvas_sync_manager() -> CanvasSyncManager:
+    return canvas_sync_manager_instance
+
 async def get_user_service(
     auth_info: Dict[str, Any] = Depends(get_current_user_and_client),
 ) -> UserService:
     user = auth_info["user"]
     client: AsyncClient = auth_info["client"]
-    # 'await' klien admin
     admin_async_client = await get_supabase_admin_async_client() 
     return UserService(authed_client=client, user=user, admin_client=admin_async_client)
 
@@ -447,11 +443,15 @@ async def get_view_service(
 ) -> ViewService:
     return ViewService(auth_info=auth_info)
 
+canvas_sync_manager_instance = CanvasSyncManager()
+async def get_canvas_sync_manager() -> CanvasSyncManager:
+    """Menyediakan instance singleton dari CanvasSyncManager."""
+    return canvas_sync_manager_instance
+
 
 AuthInfoDep = Annotated[Dict[str, Any], Depends(get_current_user_and_client)]
 EmbeddingServiceDep = Annotated[IEmbeddingService, Depends(get_embedding_service)]
 JudgeChainDep = Annotated[Runnable, Depends(get_judge_chain_singleton)]
-# (Definisi 'JudgeLLMDep' sepertinya tidak digunakan, bisa dihapus)
 
 # --- Layanan ---
 ConversationListServiceDep = Annotated[ConversationListService, Depends(get_conversation_list_service)]
@@ -466,6 +466,7 @@ ScheduleServiceDep = Annotated[ScheduleService, Depends(get_schedule_service)]
 SubscriptionServiceDep = Annotated[SubscriptionService, Depends(get_subscription_service)]
 GuestServiceDep = Annotated[GuestService, Depends(get_guest_service)]
 ViewServiceDep = Annotated[ViewService, Depends(get_view_service)]
+CanvasSyncManagerDep = Annotated[CanvasSyncManager, Depends(get_canvas_sync_manager)]
 
 # --- Keamanan Resource ---
 CanvasAccessDep = Annotated[Dict[str, Any], Depends(get_canvas_access)] 
@@ -476,6 +477,4 @@ ScheduleAccessDep = Annotated[Dict[str, Any], Depends(get_schedule_access)]
 GuestAccessDep = Annotated[Dict[str, Any], Depends(get_guest_access)]
 CalendarAccessDep = Annotated[Dict[str, Any], Depends(get_calendar_access)]
 CalendarEditorAccessDep = Annotated[Dict[str, Any], Depends(get_calendar_editor_access)]
-
-# --- [PERBAIKAN #4] Tambahkan dependency baru untuk anotasi ---
 SubscriptionDeleteAccessDep = Annotated[Dict[str, Any], Depends(get_subscription_delete_access)]

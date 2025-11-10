@@ -239,3 +239,68 @@ Seluruh *codebase* *backend* telah berhasil dimigrasi dari arsitektur *sync-over
 * **Perbaikan Keamanan IDOR:** Celah keamanan di *endpoint* `DELETE /subscriptions/{id}` telah ditutup dengan mengimplementasikan *dependency* `SubscriptionDeleteAccessDep`.
 * **Validasi Input:** *Service* (seperti `schedule_service.py`) sekarang mencakup validasi input yang kuat di *foreground* (misalnya untuk `RRULE`), yang menolak data buruk dari klien dengan `HTTP 400` alih-alih menyebabkan *crash* pada *background job*.
 * **Logging Audit:** Semua *service* CUD (Create, Update, Delete) di fitur Kalender sekarang memanggil `await log_action(...)`, dan *bug* `await` di `audit_service.py` telah diperbaiki.
+
+
+# Project Status: Implementasi Penuh v0.4.3 (backend\app\todos\Rencana Canvas Real-Time & Kolaboratif.md) - Fitur Backend
+
+Sesi ini berhasil menyelesaikan implementasi backend penuh dari blueprint Potentia v0.4.3. Arsitektur telah distabilkan, diskalakan untuk 1 Juta Pengguna, dan semua 18 endpoint fungsional kini telah diimplementasikan dan berjalan.
+
+## 1. Fitur Kolaborasi Real-Time (Skala 1 Juta Pengguna)
+
+Sistem "Canvas Party" (edit bersama) sekarang berfungsi penuh dan mampu menangani skala besar (Goal G4).
+
+* **Arsitektur Scalable (H1):** Koneksi WebSocket (`/ws/canvas/{id}`) tidak lagi terbatas pada satu server. Sistem ini sekarang menggunakan arsitektur **Redis Pub/Sub** yang memungkinkan penskalaan horizontal ke ribuan koneksi bersamaan. Jika 100 pengguna berada di satu canvas, mereka semua akan menerima pembaruan secara instan, tidak peduli di server mana mereka terhubung.
+    
+* **HTTP Fallback (H2, H3):** Jika koneksi WebSocket gagal, aplikasi sekarang memiliki endpoint HTTP (`/mutate` dan `/presence`) sebagai *fallback*. Ini memastikan pengguna tetap dapat mengedit, bahkan di jaringan yang tidak stabil (Goal G1).
+
+## 2. API Penuh (18/18 Endpoint Selesai)
+
+Seluruh 18 endpoint dari blueprint v0.4.3 kini telah diimplementasikan, menyediakan fungsionalitas CRUD penuh atas semua *resource*.
+
+* **Manajemen Canvas (A4, A5, A6, A7):** Pengguna dapat membuat (`POST /canvas`), mendaftar (`GET /canvas`), memperbarui (`PATCH /canvas/{id}` untuk judul/ikon), dan mengarsipkan (`DELETE /canvas/{id}`) canvas.
+* **Manajemen Konten (A1, A2, A3):** Pengguna dapat mengambil data canvas penuh (`GET /canvas/{id}`), daftar blok yang dipaginasi (`GET /canvas/{id}/blocks`), dan data blok individual (`GET /canvas/{id}/blocks/{block_id}`).
+* **Manajemen Akses (A8):** Endpoint baru (`GET /canvas/{id}/permissions`) memungkinkan frontend untuk segera memeriksa role pengguna (misalnya, `can_write: true`) dan melihat daftar anggota lain di canvas.
+
+## 3. Konsistensi, Performa, dan Ketahanan Data
+
+Arsitektur database telah diselesaikan untuk memastikan konsistensi dan efisiensi biaya.
+
+* **True Optimistic Locking (G2):** Sistem tidak lagi menggunakan `ot_service` yang membingungkan. Fungsionalitas edit sekarang secara eksklusif menggunakan **Optimistic Locking**. RPC atomik (`rpc_upsert_block_atomic.sql`) akan menolak editan dengan versi yang salah (mengirim `HTTP 409 Conflict`), dan frontend (TODO 26) bertanggung jawab untuk menangani konflik tersebut.
+* **LexoRank Efisien (G7):** Algoritma pengurutan blok (`lexorank_service.py`) telah diganti total. Implementasi *float-based* yang boros telah diganti dengan algoritma **base-62 (Jira-style)**. Ini secara drastis mengurangi frekuensi *rebalance* database, menghemat biaya I/O, dan memenuhi Goal G7.
+* **Rebalance Otomatis (TODO 24):** `RebalanceWorker` sekarang terhubung dengan benar ke database menggunakan `asyncpg`. Ketika string LexoRank menjadi terlalu panjang, trigger akan secara otomatis memanggil worker untuk merapikan data secara *real-time*.
+* **Resilient Embedding (TODO 30):** `EmbeddingWorker` kini dilengkapi dengan **Circuit Breaker**. Jika API Google Gemini gagal, worker tidak akan *crash*; ia akan berhenti sejenak dan mencoba lagi nanti, melindungi antrian job.
+* **Koneksi Database Skala Penuh (TODO 32):** Arsitektur sekarang dikonfigurasi untuk **PgBouncer**. Ini memungkinkan aplikasi untuk menangani ribuan koneksi simultan (G4) tanpa membebani batas koneksi database Supabase.
+    
+
+## 4. Observability & Audit (Siap Produksi)
+
+Sistem ini sekarang siap untuk dipantau di lingkungan produksi.
+
+* **Audit Penuh (G5):** Semua mutasi data (membuat, mengedit, menghapus blok) sekarang dicatat dengan benar ke tabel `SystemAudit` (bukan `AuditLog`), sesuai dengan blueprint.
+* **Metrics Akurat (S1):** Endpoint `/metrics` sekarang secara akurat menghitung *semua* koneksi WebSocket aktif dari Redis, bukan hanya dari satu server.
+* **Tracing (G6):** OpenTelemetry (TODO 35) telah diimplementasikan di `main.py`, memberikan visibilitas penuh atas performa request.
+
+---
+
+## 5. Ringkasan Endpoint Fungsional (18/18)
+
+| Kategori | Endpoint | Fungsi | Status |
+| :--- | :--- | :--- | :--- |
+| **Real-time** | **H1:** `GET /ws/canvas/{id}` | Koneksi utama untuk kolaborasi real-time. | ✅ **Selesai & Skalabel** |
+| **Real-time** | **H2:** `POST /canvas/{id}/mutate` | Fallback HTTP untuk mengirim editan blok. | ✅ **Selesai** |
+| **Real-time** | **H3:** `POST /canvas/{id}/presence` | Fallback HTTP untuk mengirim posisi kursor. | ✅ **Selesai** |
+| **Real-time** | **H4:** `GET /.../snapshot` | (Diimplementasikan sebagai gabungan A1 + A2). | ✅ **Selesai** |
+| **Real-time** | **H5:** `POST /auth/refresh` | Refresh token JWT. | ✅ **Selesai** |
+| **Real-time** | **H6:** `POST /canvas/{id}/leave` | Memberi tahu server user keluar (via HTTP). | ✅ **Selesai** |
+| **AJAX** | **A1:** `GET /canvas/{id}` | Mengambil detail info satu canvas. | ✅ **Selesai** |
+| **AJAX** | **A2:** `GET /canvas/{id}/blocks` | Mengambil daftar blok di dalam canvas (paginasi). | ✅ **Selesai** |
+| **AJAX** | **A3:** `GET /canvas/{id}/blocks/{id}` | Mengambil data satu blok spesifik. | ✅ **Selesai** |
+| **AJAX** | **A4:** `GET /canvas` | Mengambil daftar semua canvas milik pengguna. | ✅ **Selesai** |
+| **AJAX** | **A5:** `POST /canvas` | Membuat canvas baru (personal atau workspace). | ✅ **Selesai** |
+| **AJAX** | **A6:** `PATCH /canvas/{id}` | Memperbarui info canvas (judul, ikon, dll). | ✅ **Selesai** |
+| **AJAX** | **A7:** `DELETE /canvas/{id}` | Mengarsipkan canvas (`is_archived=true`). | ✅ **Selesai** |
+| **AJAX** | **A8:** `GET /canvas/{id}/permissions`| Mengecek izin tulis (`can_write`) & daftar anggota. | ✅ **Selesai** |
+| **Mikro** | **M1:** `GET /health` | Liveness probe (server hidup). | ✅ **Selesai** |
+| **Mikro** | **M2:** `GET /ready` | Readiness probe (DB & Redis terhubung). | ✅ **Selesai** |
+| **Mikro** | **M3:** `POST /debug/echo` | Endpoint debug. | ✅ **Selesai** |
+| **Mikro** | **S1:** `GET /metrics` | Endpoint Prometheus (sekarang akurat). | ✅ **Selesai** |

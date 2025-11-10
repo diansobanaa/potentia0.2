@@ -1,20 +1,69 @@
+# File: backend/app/main.py
+# (Diperbaiki: Impor OTEL dan Handler Lifespan)
+
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-import sys 
+import sys
 from app.api.v1.api import api_router
+from app.api.v1.endpoints.health import metrics_middleware
 from app.core.config import settings
 import logging.config
 from app.services.chat_engine.schemas import PaginatedConversationListResponse
-from app.core.scheduler import scheduler, setup_scheduler_jobs
+from app.core.scheduler import scheduler, setup_scheduler_jobs #
 
-# --- KONFIGURASI LOGGING (Ganti basicConfig) ---
+# --- [TAMBAHAN] Impor Handler Startup/Shutdown ---
+from app.db.asyncpg_pool import create_asyncpg_pool, close_asyncpg_pool
+from app.services.redis_pubsub import connect_redis_pubsub, disconnect_redis_pubsub
+from app.workers.embedding import stop_embedding_worker
+from app.workers.rebalance import stop_rebalance_worker
+from app.workers.cleanup import stop_cleanup_worker
+
+
+# --- OpenTelemetry Setup ---
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+# [PERBAIKAN] Impor 'Resource' yang hilang
+from opentelemetry.sdk.resources import Resource, OTEL_RESOURCE_ATTRIBUTES
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+
+def setup_opentelemetry(app: FastAPI): # [REKOMENDASI] Kirim 'app' ke fungsi
+    """Configure OpenTelemetry tracing."""
+    if not settings.OTEL_EXPORTER_OTLP_ENDPOINT:
+        logger.warning("OpenTelemetry endpoint not configured. Skipping tracing setup.")
+        return
+
+    resource = Resource(attributes={
+        OTEL_RESOURCE_ATTRIBUTES["SERVICE_NAME"]: "potentia-api",
+        OTEL_RESOURCE_ATTRIBUTES["SERVICE_VERSION"]: "0.4.3",
+    })
+
+    tracer_provider = TracerProvider(resource=resource)
+    trace.set_tracer_provider(tracer_provider)
+
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT,
+        insecure=True # Set to False for production with TLS
+    )
+
+    span_processor = BatchSpanProcessor(otlp_exporter)
+    tracer_provider.add_span_processor(span_processor)
+
+    # Instrument FastAPI and httpx
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
+    HTTPXClientInstrumentor.instrument()
+
+    logger.info("OpenTelemetry configured successfully.")
+# --- KONFIGURASI LOGGING (Tidak berubah) ---
 LOGGING_CONFIG = {
     "version": 1,
-    "disable_existing_loggers": False, # JANGAN nonaktifkan logger bawaan
+    "disable_existing_loggers": False,
     "formatters": {
         "default": {
-            # Format bisa disesuaikan
             "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
@@ -27,59 +76,53 @@ LOGGING_CONFIG = {
         },
     },
     "loggers": {
-        # Root logger (default untuk semua logger yang tidak diatur secara eksplisit)
-        # Atur ke INFO untuk log umum aplikasi, atau DEBUG jika masih debugging RAG
         "": {
             "handlers": ["console"],
-            "level": "INFO", # <-- NAIKKAN ke INFO (atau tetap DEBUG jika perlu)
-            "propagate": False, # Jangan teruskan ke root logger Python bawaan
+            "level": "INFO",
+            "propagate": False,
         },
-        # Logger aplikasi Anda (misalnya, semua di bawah 'app')
-        # Jika Anda ingin log DEBUG hanya dari kode Anda:
         "app": {
             "handlers": ["console"],
-            "level": "DEBUG", # <-- Biarkan DEBUG untuk kode aplikasi Anda
-            "propagate": False, # Jangan teruskan lagi
-        },
-        # --- NAIKKAN LEVEL UNTUK LIBRARY BERISIK ---
-        "httpx": { # Library HTTP yang mungkin dipakai supabase-py
-            "handlers": ["console"],
-            "level": "INFO", # Naikkan levelnya
+            "level": "DEBUG",
             "propagate": False,
         },
-        "httpcore": { # Dependency httpx
-             "handlers": ["console"],
-             "level": "INFO",
-             "propagate": False,
-         },
-        "hpack": { # Library HTTP/2
+        "httpx": {
             "handlers": ["console"],
-            "level": "INFO", # Naikkan levelnya
+            "level": "INFO",
             "propagate": False,
         },
-         "google.api_core": { # Library Google API
+        "httpcore": {
              "handlers": ["console"],
              "level": "INFO",
              "propagate": False,
          },
-         "google.auth": { # Library Google Auth
+        "hpack": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+         "google.api_core": {
              "handlers": ["console"],
              "level": "INFO",
              "propagate": False,
          },
-        # --- Logger Uvicorn (opsional, bisa diatur levelnya) ---
+         "google.auth": {
+             "handlers": ["console"],
+             "level": "INFO",
+             "propagate": False,
+         },
          "uvicorn": {
              "handlers": ["console"],
              "level": "INFO",
              "propagate": False,
          },
          "uvicorn.error": {
-             "level": "INFO", # Biarkan default
+             "level": "INFO",
               "propagate": False,
          },
          "uvicorn.access": {
              "handlers": ["console"],
-             "level": "INFO", # Biarkan default
+             "level": "INFO",
              "propagate": False,
          },
     },
@@ -87,47 +130,68 @@ LOGGING_CONFIG = {
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("app")
-# --- AKHIR KONFIGURASI LOGGING ----
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Mengelola startup dan shutdown event untuk aplikasi FastAPI.
-    Ini adalah tempat kita mengaktifkan background scheduler.
+    [DIREFACTOR] Mengelola siklus hidup koneksi dan worker.
     """
-    # Kode ini akan dijalankan saat aplikasi startup
     logger.info("Aplikasi FastAPI memulai startup...")
+    
+    # --- STARTUP ---
     try:
-        # Panggil model_rebuild() untuk model yang bermasalah
+        # 1. Hubungkan Koneksi Eksternal
+        await connect_redis_pubsub()  # Untuk WebSocket & SSE scaling
+        await create_asyncpg_pool()   # Untuk RebalanceWorker (pg_notify)
+        
+        # 2. Rebuild Model (dari file asli Anda)
         PaginatedConversationListResponse.model_rebuild()
-        logger.debug("PaginatedConversationListResponse model rebuilt successfully.")
-    except Exception as e:
-        logger.warning(f"Gagal rebuild PaginatedConversationListResponse model: {e}")
+        logger.debug("PaginatedConversationListResponse model rebuilt.")
 
-    try:
-        # Daftarkan semua job (dari file jobs/)
-        setup_scheduler_jobs()
-        # Mulai scheduler di background
+        # 3. Jalankan Scheduler & Background Jobs
+        setup_scheduler_jobs() #
         scheduler.start()
-        logger.info("APScheduler (untuk background jobs) berhasil dimulai.")
+        logger.info("APScheduler (background jobs) berhasil dimulai.")
+        
     except Exception as e:
-        logger.critical(f"FATAL: Gagal memulai APScheduler: {e}", exc_info=True)
+        logger.critical(f"FATAL: Gagal saat startup: {e}", exc_info=True)
+        # Hentikan aplikasi jika startup gagal
+        raise e
 
-    yield  # Aplikasi berjalan di sini
+    yield # Aplikasi berjalan
 
-    # Kode ini akan dijalankan saat aplikasi shutdown
+    # --- SHUTDOWN ---
+    logger.info("Aplikasi FastAPI memulai shutdown...")
+    
+    # 1. Hentikan semua worker & scheduler
     if scheduler.running:
-        scheduler.shutdown()
-        logger.info("APScheduler berhasil dimatikan.")
-    logger.info("Aplikasi FastAPI shutdown.")
+        scheduler.shutdown(wait=False) # Matikan scheduler
+        logger.info("APScheduler dimatikan.")
+        
+    stop_embedding_worker()
+    stop_rebalance_worker()
+    stop_cleanup_worker()
+    logger.info("Semua worker dihentikan.")
+
+    # 2. Tutup Koneksi Eksternal
+    await disconnect_redis_pubsub()
+    await close_asyncpg_pool()
+    logger.info("Semua koneksi (Redis Pub/Sub, AsyncPG) ditutup.")
+    logger.info("Aplikasi FastAPI shutdown selesai.")
 
 
 app = FastAPI(
     title="AI Collaborative Canvas API",
-    version="0.1.0",
+    version="0.4.3",
     description="Backend for a collaborative canvas with an intelligent AI agent.",
-    lifespan=lifespan
+    lifespan=lifespan # [REFACTOR] Gunakan lifespan yang baru
 )
+
+# Setup OpenTelemetry BEFORE middleware
+setup_opentelemetry(app) # [REKOMENDASI] Kirim 'app'
+
+# Add metrics middleware
+app.middleware("http")(metrics_middleware) #
 
 app.add_middleware(
     CORSMiddleware,
@@ -135,6 +199,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
+) #
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/api/v1") #

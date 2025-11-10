@@ -8,9 +8,7 @@ from typing import List, Dict, Any, TYPE_CHECKING
 from datetime import datetime
 import pytz 
 
-# --- PERBAIKAN: Impor klien Redis async ---
-from app.services.redis_rate_limiter import redis_client
-# ----------------------------------------
+from app.services.redis_rate_limiter import rate_limiter
 from app.db.queries.calendar.calendar_queries import get_instances_for_users_in_range
 
 if TYPE_CHECKING:
@@ -24,7 +22,7 @@ class FreeBusyService:
     def __init__(self, auth_info: "AuthInfoDep"):
         self.user = auth_info["user"]
         self.client = auth_info["client"] # Ini sekarang AsyncClient
-        self.redis = redis_client # Ini sekarang Async Redis Client
+        self.redis = rate_limiter # Ini sekarang Async Redis Client
         logger.debug(f"FreeBusyService (Async) diinisialisasi untuk User: {self.user.id}")
 
     async def get_freebusy_for_users(

@@ -1,8 +1,8 @@
-# PARSE: 21-fix-blocks-endpoint-v2.py
+# backend\app\api\v1\endpoints\blocks.py
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Body, status
-from typing import List, Dict, Any, Optional, Annotated # <-- DIUBAH
+from typing import List, Dict, Any, Optional, Annotated 
 from uuid import UUID
 
 # Impor model Pydantic
@@ -10,50 +10,46 @@ from app.models.block import Block, BlockCreate, BlockUpdate
 # Impor dependency untuk otentikasi dan akses
 from app.core.dependencies import (
     get_canvas_access, 
-    get_embedding_service  # <-- DIUBAH: Impor factory service
+    get_embedding_service  
 )
 # Impor interface service
-from app.services.interfaces import IEmbeddingService # <-- DIUBAH
+from app.services.interfaces import IEmbeddingService 
 # Impor fungsi query
 from app.db.queries.block_queries.create_block_and_embedding import create_block_and_embedding
 from app.db.queries.block_queries.update_block_and_embedding import update_block_and_embedding
 from app.db.queries.block_queries.delete_block_with_embedding import delete_block_with_embedding
-from app.db.queries.block_queries.get_blocks import get_blocks_in_canvas
+from app.db.queries.block_queries.get_blocks import get_blocks_in_canvas # KITA PERBAIKI AWAIT DI BAWAH
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["blocks"])
 
-# --- DIUBAH: Tipe Alias untuk DI yang bersih ---
 AuthInfoDep = Annotated[Dict[str, Any], Depends(get_canvas_access)]
 EmbeddingServiceDep = Annotated[IEmbeddingService, Depends(get_embedding_service)]
-# ---
 
 @router.post("/", response_model=Block, status_code=status.HTTP_201_CREATED)
 async def create_new_block_endpoint(
     canvas_id: UUID,
     block_data: BlockCreate,
-    access_info: AuthInfoDep, # <-- DIUBAH
-    embedding_service: EmbeddingServiceDep # <-- DIUBAH: Inject service
+    access_info: AuthInfoDep, 
+    embedding_service: EmbeddingServiceDep 
 ):
     """
-    Endpoint untuk membuat block baru beserta embeddingnya.
-    
-    INPUT: BlockCreate (type: BlockType, content: str, y_order: float).
-    OUTPUT: Block (Block_id, content, y_order, ai_metadata).
-    
-    KAPAN DIGUNAKAN: Di Canvas Editor saat pengguna menekan Enter (membuat block baru) atau memasukkan konten.
+    Endpoint untuk membuat block baru. Meneruskan user_id (created_by) untuk audit.
     """
     logger.info(f"Attempting to create block in canvas {canvas_id}")
     authed_client = access_info["client"]
+    current_user_id = access_info["user"].id # DITAMBAHKAN: Audit
     new_block_payload = block_data.model_dump(mode='json')
-
+    
+    # y_order sudah ditangani default 'a0' di BlockCreate, tidak perlu diubah di sini
+    
     try:
-        # --- DIUBAH: Teruskan service ke fungsi query ---
         created_block = await create_block_and_embedding(
             authed_client, 
             embedding_service, 
             canvas_id, 
-            new_block_payload
+            new_block_payload,
+            user_id=current_user_id # DIUBAH: Meneruskan user_id
         )
     except Exception as e:
         logger.error(f"Failed to create block in canvas {canvas_id}: {e}", exc_info=True)
@@ -65,15 +61,14 @@ async def create_new_block_endpoint(
 @router.get("/", response_model=List[Block])
 async def list_blocks_in_canvas_endpoint(
     canvas_id: UUID,
-    access_info: AuthInfoDep # <-- DIUBAH (Konsistensi)
+    access_info: AuthInfoDep 
 ):
     """Endpoint untuk mengambil semua block dalam sebuah canvas."""
     logger.info(f"Attempting to list blocks for canvas {canvas_id}")
     authed_client = access_info["client"]
     
-    # Fungsi 'get_blocks_in_canvas' Anda juga harus dibuat non-blocking
-    # (menggunakan asyncio.to_thread) jika belum.
-    blocks = get_blocks_in_canvas(authed_client, canvas_id) 
+    # get_blocks_in_canvas sudah async, pastikan di-await
+    blocks = await get_blocks_in_canvas(authed_client, canvas_id) # DIUBAH: Menambahkan 'await'
     
     logger.info(f"Found {len(blocks)} blocks for canvas {canvas_id}")
     return blocks
@@ -83,21 +78,15 @@ async def update_block_content_endpoint(
     canvas_id: UUID,
     block_id: UUID,
     block_update: BlockUpdate,
-    access_info: AuthInfoDep, # <-- DIUBAH
-    embedding_service: EmbeddingServiceDep # <-- DIUBAH: Inject service
+    access_info: AuthInfoDep, 
+    embedding_service: EmbeddingServiceDep 
 ):
     """
-    Endpoint untuk memperbarui block. Jika konten berubah, embedding juga diperbarui di background.
-    
-    INPUT: BlockUpdate (content: Optional[str], y_order: Optional[float]).
-    OUTPUT: Block (Objek block yang telah diperbarui).
-    
-    KAPAN DIGUNAKAN: Di Canvas Editor saat pengguna mengetik (throttled save) atau menyeret block (mengubah y_order).
-    
-    NOTE: KITA BELUM TAHU DATA AKAN DITAMPILKAN SEPERTI APA DALAM CANVAS
+    Endpoint untuk memperbarui block. Meneruskan user_id (updated_by) untuk audit.
     """
     logger.info(f"Attempting to update block {block_id} in canvas {canvas_id}")
     authed_client = access_info["client"]
+    current_user_id = access_info["user"].id # DITAMBAHKAN: Audit
     update_payload = block_update.model_dump(mode='json', exclude_unset=True)
 
     if not update_payload:
@@ -105,20 +94,23 @@ async def update_block_content_endpoint(
        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided.")
 
     try:
-        # --- DIUBAH: Teruskan service ke fungsi query ---
         updated_block = await update_block_and_embedding(
             authed_client,
-            embedding_service, # <-- DIUBAH
+            embedding_service, 
             block_id, 
-            update_payload
+            update_payload,
+            user_id=current_user_id # DIUBAH: Meneruskan user_id
         )
     except Exception as e:
         logger.error(f"Failed to update block {block_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # Mengubah kode status 44 menjadi 404
+        if "tidak ditemukan" in str(e): 
+             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     if updated_block is None:
         logger.error(f"Block {block_id} not found in canvas {canvas_id}.")
-        raise HTTPException(status_code=status.HTTP_44_NOT_FOUND, detail="Block not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found.")
 
     logger.info(f"Successfully updated block {block_id}")
     return updated_block
@@ -127,13 +119,12 @@ async def update_block_content_endpoint(
 async def delete_a_block_endpoint(
     canvas_id: UUID,
     block_id: UUID,
-    access_info: AuthInfoDep # <-- DIUBAH
+    access_info: AuthInfoDep 
 ):
     """Endpoint untuk menghapus block beserta embeddingnya."""
     logger.info(f"Attempting to delete block {block_id} from canvas {canvas_id}")
     authed_client = access_info["client"]
 
-    # Fungsi ini juga harus dibuat non-blocking (asyncio.to_thread)
     success = await delete_block_with_embedding(authed_client, block_id)
 
     if not success:

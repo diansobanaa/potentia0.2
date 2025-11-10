@@ -1,5 +1,7 @@
-# PARSE: 16-full-config-v2.py
-# backend\app\core\config.py
+# File: backend/app/core/config.py
+# (DIPERBAIKI - Menambahkan DATABASE_URL yang hilang)
+
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from uuid import UUID
 
@@ -8,6 +10,10 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
+    
+    # [PERBAIKAN] Tambahkan field ini agar Pydantic mau menerimanya
+    DATABASE_URL: str 
+
     JWT_SECRET: str
     SUPABASE_JWT_SECRET: str
 
@@ -36,6 +42,13 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
 
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
+
+    # Debug mode
+    DEBUG: bool = False
+    
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding='utf-8')
+
+    
 
 settings = Settings()

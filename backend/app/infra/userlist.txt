@@ -1,0 +1,6 @@
+# File: infra/userlist.txt
+# Format: "username" "password"
+#
+# Ganti dengan username (biasanya 'postgres') dan password database Supabase Anda
+# Ini adalah kredensial yang digunakan PgBouncer untuk membuat koneksi ke Supabase
+"postgres" "Suarakodok1#"

@@ -1,48 +1,50 @@
 # File: backend/app/api/v1/api.py
-# (File Diperbarui)
+# (DIREFACTOR - Membersihkan include router)
 
 from fastapi import APIRouter
+
 from app.api.v1.endpoints import (
-    auth, workspaces, canvases, blocks, schedules,
-    chat, canvas_members, workspace_members, invitations,
-    calendars, schedules_api, calendar_subscriptions
+    auth,
+    blocks,
+    calendars,
+    calendar_subscriptions,
+    canvases,  # Router baru kita
+    # canvas_members, # <-- [REFACTOR] DIHAPUS DARI SINI
+    chat,
+    health, 
+    invitations,
+    notifications,
+    schedules,
+    schedules_api,
+    schedule_guests,
+    views,
+    workspaces,
+    workspace_members,
+    socket,
 )
-# --- [PENAMBAHAN BARU] ---
-from app.api.v1.endpoints import views
-from app.api.v1.endpoints import schedule_guests
 
 api_router = APIRouter()
 
-# --- Endpoint Otentikasi & Pengguna ---
-api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(blocks.router, prefix="/blocks", tags=["blocks"])
+api_router.include_router(calendars.router, prefix="/calendars", tags=["calendars"])
+api_router.include_router(calendar_subscriptions.router, prefix="/calendar_subscriptions", tags=["calendar_subscriptions"])
+
+# [REFACTOR] Hanya satu router canvas yang disertakan.
+# Prefix "/canvas" sudah didefinisikan di dalam 'canvases.py'
+api_router.include_router(canvases.router) 
+
+# [REFACTOR] Baris ini dihapus, karena sudah ditangani oleh canvases.router
+# api_router.include_router(canvas_members.router, prefix="/canvas_members", tags=["canvas_members"]) 
+
+api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(health.router, tags=["health"]) 
 api_router.include_router(invitations.router, prefix="/invitations", tags=["invitations"])
-
-# --- Endpoint Workspace & Anggota ---
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(schedules.router, prefix="/schedules", tags=["schedules"])
+api_router.include_router(schedules_api.router, prefix="/schedules_api", tags=["schedules_api"])
+api_router.include_router(schedule_guests.router, prefix="/schedule_guests", tags=["schedule_guests"])
+api_router.include_router(views.router, prefix="/views", tags=["views"])
 api_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"])
-api_router.include_router(
-    workspace_members.router, 
-    prefix="/workspaces/{workspace_id}/members",
-    tags=["workspaces"] 
-)
-
-# --- Endpoint Canvas & Blok ---
-api_router.include_router(canvases.router, prefix="/canvases", tags=["canvases"])
-api_router.include_router(
-    canvas_members.router, 
-    prefix="/canvases/{canvas_id}/members",
-    tags=["canvases"] 
-)
-api_router.include_router(blocks.router, prefix="/canvases/{canvas_id}/blocks", tags=["blocks"])
-
-# --- Endpoint Chat ---
-api_router.include_router(chat.router, prefix="/chat", tags=["Chat"])
-
-# --- [ROUTER BARU UNTUK KALENDER/JADWAL] ---
-api_router.include_router(schedules.router, prefix="/workspaces/{workspace_id}/schedules", tags=["schedules (Legacy)"], include_in_schema=False)
-
-api_router.include_router(calendars.router) # (Dari TODO-API-2)
-api_router.include_router(schedules_api.router) # (Dari TODO-API-3)
-api_router.include_router(calendar_subscriptions.router) # (Dari TODO-API-4)
-api_router.include_router(calendar_subscriptions.subscription_delete_router) # (Dari TODO-API-4)
-api_router.include_router(schedule_guests.router)# (Dari TODO-API-5)
-api_router.include_router(views.router)# (Dari TODO-API-6)
+api_router.include_router(workspace_members.router, prefix="/workspace_members", tags=["workspace_members"])
+api_router.include_router(socket.router, tags=["websocket"])

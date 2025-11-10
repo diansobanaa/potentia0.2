@@ -16,7 +16,7 @@ from app.db.queries.conversation.user_preference_reader import (
 )
 
 if TYPE_CHECKING:
-    from app.services.embedding_service import EmbeddingService
+    from app.services.embedding_service import GeminiEmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class ContextPacker:
     def __init__(
         self, 
         client: AsyncClient, # <-- Tipe diubah
-        embedding_service: 'EmbeddingService'
+        embedding_service: 'GeminiEmbeddingService'
     ):
         self.client = client
         self.embedding_service = embedding_service

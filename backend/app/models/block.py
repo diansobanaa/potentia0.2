@@ -1,13 +1,13 @@
-from pydantic import BaseModel, Field 
-from typing import Optional, Any
+# File: backend/app/models/block.py
+# (DISESUAIKAN dengan skema SQL baru)
+
+from pydantic import BaseModel, Field
+from typing import Optional, Any, Dict, Literal
 from uuid import UUID
+from datetime import datetime
 from enum import Enum
 
 class BlockType(str, Enum):
-    """
-    Mendefinisikan tipe-tipe block yang valid dan dapat diterima oleh API.
-    Menggunakan str Enum memastikan data yang masuk selalu konsisten.
-    """
     text = "text"
     task_item = "task_item"
     heading_1 = "heading_1"
@@ -18,56 +18,74 @@ class BlockType(str, Enum):
 class BlockCreate(BaseModel):
     """
     Model Pydantic untuk data yang DIHARAPKAN saat membuat block baru.
-    Ini digunakan sebagai validasi input untuk endpoint POST.
     """
     parent_id: Optional[UUID] = None
     type: BlockType
     content: str
     properties: Optional[dict] = None
-    y_order: Optional[float] = 0.0
+    y_order: Optional[str] = "a0"
 
 class BlockUpdate(BaseModel):
     """
     Model Pydantic untuk data yang OPSIONAL saat memperbarui block.
-    Ini digunakan sebagai validasi input untuk endpoint PATCH.
-    Semua field bersifat Opsional.
     """
     content: Optional[str] = None
     properties: Optional[dict] = None
-    y_order: Optional[float] = None
+    y_order: Optional[str] = None
+
+class BlockOperationPayload(BaseModel):
+    """
+    Payload yang dikirim dari klien untuk memicu operasi mutasi
+    pada block (POST /mutate atau WebSocket H1).
+    """
+    client_op_id: str = Field(
+        ..., 
+        description="UUID unik yang dihasilkan klien untuk idempotency (Tugas 2)."
+    )
+    block_id: Optional[UUID] = Field(
+        None, 
+        description="ID block yang dimutasi. Opsional jika action='create'."
+    )
+    canvas_id: UUID = Field(
+        ..., 
+        description="ID canvas target."
+    )
+    update_data: Dict[str, Any] = Field(
+        ...,
+        description="Data update block (misal: {'content': 'teks baru', 'y_order': 'b1'})."
+    )
+    action: Literal["create", "update", "delete"] = Field(
+        ...,
+        description="Jenis operasi."
+    )
+    expected_version: Optional[int] = Field(
+        None, 
+        description="Nomor versi block yang diharapkan klien sebelum update/delete (Optimistic Locking)."
+    )
 
 class Block(BaseModel):
     """
-    Model Pydantic utama untuk data Block.
-    Ini merepresentasikan data yang ada di database DAN
-    digunakan sebagai 'response_model' (validasi output) untuk API.
+    Model Pydantic utama untuk data Block (Refleksi Skema DB v0.4.3).
     """
     
-    # --- TITIK PENTING (Perbaikan ResponseValidationError) ---
-    # 'id' adalah nama field di model Pydantic kita (yang diharapkan oleh 'response_model').
-    # 'block_id' adalah nama kolom di database Supabase Anda.
-    # 'Field(alias=...)' memberitahu Pydantic untuk mengisi field 'id' ini
-    # dengan nilai dari 'block_id' saat memuat data dari database.
     id: UUID = Field(alias='block_id') 
-    # --------------------------------------------------------
-    
     canvas_id: UUID
     parent_id: Optional[UUID]
-    y_order: float
-    type: BlockType
+    
+    y_order: str
+    version: int = Field(default=1)
+    created_at: Optional[datetime] = None
+    created_by: Optional[UUID] = None
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[UUID] = None
+    
+    type: str # Diubah dari BlockType karena di DB disimpan sebagai TEXT
     content: str
     properties: Optional[dict] = None
     ai_metadata: Optional[dict] = None
+    vector: Optional[Any] = None # VECTOR(760)
     
     class Config:
         """Konfigurasi internal untuk model Pydantic."""
-        
-        # Mengizinkan Pydantic untuk memuat data dari atribut objek
-        # (penting jika Anda mengembalikan objek ORM, bukan hanya dict).
         from_attributes = True
-        
-        # --- TITIK PENTING (Pasangan dari 'alias') ---
-        # Ini mengizinkan Pydantic untuk mengisi field berdasarkan alias-nya ('block_id')
-        # selain nama field-nya ('id'). WAJIB ADA agar alias berfungsi.
         populate_by_name = True
-

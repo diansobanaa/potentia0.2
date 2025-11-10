@@ -16,7 +16,7 @@ from app.models.workspace import (
 from app.core.dependencies import WorkspaceMemberDep, WorkspaceAdminAccessDep
 
 # --- [IMPOR KUERI DIPERBARUI] ---
-from app.db.queries.workspace.workspace_queries import (
+from app.db.queries.workspace import (
     list_workspace_members,
     # 'add_member_to_workspace' TIDAK diimpor di sini
     create_workspace_invitation,  # <- Hanya fungsi invite
