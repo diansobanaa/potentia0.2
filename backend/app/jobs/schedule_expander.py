@@ -156,11 +156,10 @@ async def expand_recurring_events_job():
     logger.info("[JOB] Memulai job 'expand_recurring_events_job'...")
     
     # --- PERBAIKAN: Panggil Redis async ---
-    lock_key = "lock:scheduler:expand_recurring_events_job"
-    is_locked = await rate_limiter.set(
-        lock_key, "running", ex=300, nx=True 
+    lock_key = "lock:expand_recurring_events_job"
+    is_locked = await rate_limiter.redis.set(
+        lock_key, "1", nx=True, ex=300
     )
-    
     if not is_locked:
         logger.warning("[JOB] Melewatkan 'expand_recurring_events_job', job lain sedang berjalan (lock global aktif).")
         return

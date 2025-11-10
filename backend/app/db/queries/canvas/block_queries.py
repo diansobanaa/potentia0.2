@@ -225,3 +225,36 @@ async def update_block_y_order_db(
     except Exception as e:
         logger.error(f"Error di update_block_y_order_db: {e}", exc_info=True)
         raise DatabaseError("update_block_y_order_db", str(e))
+
+#--- Diekstrak dari ai_block_manager ---
+async def bulk_insert_ai_blocks_rpc(
+    admin_client: AsyncClient, 
+    canvas_id: UUID,
+    creator_id: UUID,
+    session_id: UUID,
+    blocks: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Memanggil RPC 'rpc_bulk_insert_ai_blocks' untuk menyimpan
+    semua blok yang dihasilkan AI dalam satu transaksi atomik.
+    """
+    try:
+        params = {
+            "p_canvas_id": str(canvas_id),
+            "p_creator_id": str(creator_id),
+            "p_session_id": str(session_id),
+            "p_blocks": json.dumps(blocks) # Kirim sebagai array JSON
+        }
+        
+        response: APIResponse = await admin_client.rpc(
+            "rpc_bulk_insert_ai_blocks", params
+        ).execute()
+        
+        if response.data:
+            return response.data
+        
+        raise DatabaseError("bulk_insert_ai_blocks_rpc", "Tidak ada data dikembalikan dari RPC.")
+        
+    except Exception as e:
+        logger.error(f"Error di bulk_insert_ai_blocks_rpc: {e}", exc_info=True)
+        raise DatabaseError("bulk_insert_ai_blocks_rpc", str(e))

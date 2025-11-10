@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     DEFAULT_ROLE_ID: UUID
     SEEDING_ADMIN_KEY: str  
 
+    AI_AGENT_USER_ID: UUID # ID Pengguna untuk AI Agent
+    
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
 
@@ -50,5 +52,4 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding='utf-8')
 
     
-
-settings = Settings()
+settings = Settings() 
