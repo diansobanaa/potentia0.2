@@ -24,10 +24,9 @@ htmlcov/
 Thumbs.db
 
 # Secret / env
-.env
-.env.* 
-
-# Tests / notebooks
+# --- BARIS INI TELAH DIHAPUS/DIKOMENTARI AGAR .ENV DAPAT DILACAK ---
+# .env 
+.env.* # Tests / notebooks
 .ipynb_checkpoints/
 
 # Docker
