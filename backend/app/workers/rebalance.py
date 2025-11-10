@@ -1,5 +1,4 @@
 # File: backend/app/workers/rebalance.py
-# (DIREFACTOR TOTAL - Beralih dari Redis ke pg_notify)
 
 import asyncio
 import logging
@@ -11,8 +10,8 @@ import asyncpg
 # Impor service yang sudah dipindahkan
 from app.services.canvas.lexorank_service import LexoRankService #
 from app.core.config import settings #
-# Impor pool asyncpg yang baru
 from app.db.asyncpg_pool import get_asyncpg_pool
+
 
 logger = logging.getLogger(__name__)
 
@@ -79,21 +78,25 @@ class RebalanceWorker:
 
     async def _run_loop(self):
         """
-        [REFACTOR] Loop utama worker, sekarang menggunakan asyncpg LISTEN.
+        Loop utama worker, sekarang menggunakan asyncpg LISTEN.
         """
+        await asyncio.sleep(2) # Jeda untuk startup
+        
+        conn = None # Definisikan conn di luar try
         try:
             pool = get_asyncpg_pool()
-            async with pool.acquire() as conn:
-                self.connection = conn
-                await conn.add_listener('rebalance_needed', self._notification_listener)
-                logger.info("Rebalance worker listening ke channel 'rebalance_needed'.")
-                
-                while self.running:
-                    # Cek jika koneksi masih hidup
-                    if self.connection.is_closed():
-                        logger.warning("Koneksi RebalanceWorker terputus, loop berhenti.")
-                        break
-                    await asyncio.sleep(1) # Loop utama hanya tidur
+            # [PERBAIKAN] Jangan gunakan 'async with', kelola koneksi secara manual
+            # agar tetap terbuka selama 'while self.running'
+            conn = await pool.acquire()
+            await conn.add_listener('rebalance_needed', self._notification_listener)
+            logger.info("Rebalance worker listening ke channel 'rebalance_needed'.")
+            
+            while self.running:
+                # Cek jika koneksi masih hidup
+                if conn.is_closed(): # [PERBAIKAN] Cek di sini aman
+                    logger.warning("Koneksi RebalanceWorker terputus, loop berhenti.")
+                    break
+                await asyncio.sleep(1) # Loop utama hanya tidur
                     
         except asyncio.CancelledError:
             logger.info("Rebalance worker loop dibatalkan.")
@@ -102,11 +105,14 @@ class RebalanceWorker:
         finally:
             self.running = False
             self.task = None
-            if self.connection and not self.connection.is_closed():
+            if conn:
                 try:
-                    await self.connection.remove_listener('rebalance_needed', self._notification_listener)
+                    logger.info("Melepaskan koneksi listener rebalance...")
+                    await conn.remove_listener('rebalance_needed', self._notification_listener)
+                    pool = get_asyncpg_pool()
+                    await pool.release(conn)
                 except Exception as e:
-                    logger.warning(f"Gagal remove listener: {e}")
+                    logger.warning(f"Gagal melepaskan koneksi/listener: {e}")
             logger.info("Rebalance worker loop stopped.")
 
     def stop(self):

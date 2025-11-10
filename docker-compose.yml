@@ -1,82 +1,40 @@
 # File: docker-compose.yml
-# (Perbarui service pgbouncer)
-services:
+# (FINAL - PgBouncer telah dihapus, beralih ke Supavisor via DATABASE_URL)
 
-  # --- Layanan Backend (Python/FastAPI) ---
-  backend:
-    # 'build: ./backend' berarti ini butuh Dockerfile di folder ./backend
-    build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
-    env_file:
-      # Memuat .env dari folder backend
-      - ./backend/.env
-    volumes:
-      # Mengarahkan folder 'backend' lokal ke '/app' di container
-      - ./backend:/app
+version: '3.8'
+
+services:
+  backend-1:
+    build:
+      context: ./backend # Asumsi Dockerfile Anda ada di folder backend
+      dockerfile: Dockerfile
+    container_name: potentia_backend
     ports:
       - "8000:8000"
-    environment:
-      # Env var dari file root Anda
-      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend:/app # Sinkronisasi kode untuk pengembangan
+    # 'env_file' tidak diperlukan jika Anda menggunakan Codespaces Secrets
+    # env_file:
+    #   - ./backend/.env
     depends_on:
-      - redis
+      - redis-1
+    restart: unless-stopped
+    # Pastikan 'backend-1' berada di jaringan yang sama dengan 'redis-1'
+    # (Biasanya default, tapi 'networks' eksplisit lebih aman)
+    networks:
+      - potentia-net
 
-    dns:
-      - 8.8.8.8
-
-  # --- Layanan Redis ---
-  redis:
-    image: "redis:alpine"
+  redis-1:
+    # Menggunakan image Redis standar (seperti yang terlihat di log Anda)
+    image: redis:latest
+    container_name: potentia_redis
     ports:
       - "6379:6379"
-    volumes:
-      # Menggunakan volume 'redis_data' untuk persistensi
-      - redis_data:/data
-  
+    restart: unless-stopped
+    networks:
+      - potentia-net
 
 
-  pgbouncer:
-    # [PERBAIKAN 1] Kita gunakan image ini, yang kita tahu ADA
-    image: pgbouncer/pgbouncer:latest
-    container_name: potentia_pgbouncer
-    ports:
-      - "6432:6432"
-      
-    # [PERBAIKAN 2] Hapus 'volumes'. Kita tidak akan me-mount file .ini lagi.
-    # volumes:
-    #   - ./infra/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini
-    #   - ./infra/userlist.txt:/etc/pgbouncer/userlist.txt
-
-    # [PERBAIKAN 3] Tambahkan environment variable untuk mengkonfigurasi pgbouncer
-    environment:
-      # --- Info Database Supabase ---
-      # (Diambil dari .env dan pgbouncer.ini Anda)
-      - DATABASES_HOST=db.blcvobkkfimyisuhxvbu.supabase.co
-      - DATABASES_PORT=5432
-      - DATABASES_DBNAME=potentiav2
-      - DATABASES_USER=postgres
-      - DATABASES_PASSWORD=Suarakodok1 # <-- Ganti dengan password asli Anda
-      - DATABASES_SSLMODE=require # <-- Wajib untuk Supabase
-
-      # --- Pengaturan Pool (dari pgbouncer.ini) ---
-      - POOL_MODE=transaction
-      - MAX_CLIENT_CONN=200
-      - DEFAULT_POOL_SIZE=20
-      - MIN_POOL_SIZE=5
-      - RESERVE_POOL_SIZE=5
-      - SERVER_RESET_QUERY=DISCARD ALL
-      - AUTH_TYPE=md5
-      
-      # --- Pengaturan PgBouncer ---
-      - LISTEN_ADDR=0.0.0.0
-      - LISTEN_PORT=6432
-      - ADMIN_USERS=pgbouncer_admin
-      - STATS_USERS=pgbouncer_stats
-      
-    restart: always
-
-# Mendefinisikan volume yang digunakan di atas
-volumes:
-  redis_data:
-
-
+networks:
+  potentia-net:
+    driver: bridge
