@@ -22,7 +22,7 @@ async def delete_block_with_embedding(
     try:
         logger.info(f"(Query/Delete) Deleting base block {block_id}")
         # --- PERBAIKAN: Gunakan 'await' ---
-        response = await authed_client.table("Blocks") \
+        response = await authed_client.table("blocks") \
             .delete() \
             .eq("block_id", str(block_id)) \
             .execute()

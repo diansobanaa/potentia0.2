@@ -70,7 +70,7 @@ async def get_latest_server_seq_db(
     Sumber:
     """
     try:
-        response: APIResponse = await admin_client.table("BlockOperations") \
+        response: APIResponse = await admin_client.table("block_operations") \
             .select("server_seq") \
             .eq("canvas_id", str(canvas_id)) \
             .order("server_seq", desc=True) \
@@ -95,7 +95,7 @@ async def check_duplicate_operation_db(
     Sumber:
     """
     try:
-        response: APIResponse = await admin_client.table("BlockOperations") \
+        response: APIResponse = await admin_client.table("block_operations") \
             .select("op_id", count="exact") \
             .eq("client_op_id", client_op_id) \
             .eq("block_id", str(block_id)) \
@@ -169,7 +169,7 @@ async def get_sibling_blocks_db(
     Sumber:
     """
     try:
-        query = admin_client.table("Blocks") \
+        query = admin_client.table("blocks") \
             .select("block_id, y_order") \
             .eq("canvas_id", str(canvas_id))
         
@@ -194,7 +194,7 @@ async def get_all_blocks_for_rebalance_db(
     Sumber:
     """
     try:
-        response: APIResponse = await admin_client.table("Blocks") \
+        response: APIResponse = await admin_client.table("blocks") \
             .select("block_id, parent_id, y_order") \
             .eq("canvas_id", str(canvas_id)) \
             .order("y_order") \
@@ -214,7 +214,7 @@ async def update_block_y_order_db(
     Sumber:
     """
     try:
-        response: APIResponse = await admin_client.table("Blocks") \
+        response: APIResponse = await admin_client.table("blocks") \
             .update({"y_order": new_y_order}) \
             .eq("block_id", str(block_id)) \
             .execute()

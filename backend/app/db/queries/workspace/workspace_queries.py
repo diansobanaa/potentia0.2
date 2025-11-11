@@ -30,7 +30,7 @@ async def create_workspace(
     (Async Native) Membuat Workspace baru di tabel 'Workspaces'.
     """
     try:
-        response: APIResponse = await authed_client.table("Workspaces").insert({ # <-- 'await'
+        response: APIResponse = await authed_client.table("workspaces").insert({ # <-- 'await'
             "name": name,
             "type": workspace_type,
             "owner_user_id": str(owner_id)
@@ -52,7 +52,7 @@ async def get_workspace_by_id(
     (Async Native) Mengambil detail workspace berdasarkan ID.
     """
     try:
-        response: APIResponse = await authed_client.table("Workspaces") \
+        response: APIResponse = await authed_client.table("workspaces") \
             .select("*") \
             .eq("workspace_id", str(workspace_id)) \
             .maybe_single() \
@@ -79,7 +79,7 @@ async def update_workspace(
 ) -> Dict[str, Any]:
     try:
         # --- PERBAIKAN: Hapus .single() ---
-        response = await authed_client.table("Workspaces") \
+        response = await authed_client.table("workspaces") \
             .update({"name": new_name}, returning="representation") \
             .eq("workspace_id", str(workspace_id)) \
             .eq("owner_user_id", str(user_id)) \
@@ -100,7 +100,7 @@ async def delete_workspace(
 ) -> bool:
     try:
         # --- PERBAIKAN: Hapus .single() ---
-        response = await authed_client.table("Workspaces") \
+        response = await authed_client.table("workspaces") \
             .delete(returning="representation") \
             .eq("workspace_id", str(workspace_id)) \
             .eq("owner_user_id", str(user_id)) \
@@ -130,7 +130,7 @@ async def get_user_workspaces_paginated(
         # --- PERBAIKAN: Optimasi dengan asyncio.gather ---
         
         # Kueri 1: Ambil data paginasi
-        list_task = authed_client.table("WorkspaceMembers") \
+        list_task = authed_client.table("workspace_members") \
             .select("Workspaces(*)") \
             .eq("user_id", str(user_id)) \
             .order("workspace_id", desc=True) \
@@ -138,7 +138,7 @@ async def get_user_workspaces_paginated(
             .execute() # (awaitable)
 
         # Kueri 2: Ambil total hitungan (count)
-        count_task = authed_client.table("WorkspaceMembers") \
+        count_task = authed_client.table("workspace_members") \
             .select("workspace_id", count="exact") \
             .eq("user_id", str(user_id)) \
             .execute() # (awaitable)
@@ -153,7 +153,7 @@ async def get_user_workspaces_paginated(
         data = getattr(list_response, "data", None) or []
         total = getattr(count_response, "count", 0) or 0
         
-        workspaces = [item["Workspaces"] for item in data if item.get("Workspaces")]
+        workspaces = [item["workspaces"] for item in data if item.get("workspaces")]
         return workspaces, total
     except Exception as e:
         logger.error(f"Error paginating user workspaces (async): {e}", exc_info=True)
@@ -172,7 +172,7 @@ async def check_user_membership(
     (Async Native) Memeriksa apakah pengguna adalah anggota workspace.
     """
     try:
-        response: APIResponse = await authed_client.table("WorkspaceMembers") \
+        response: APIResponse = await authed_client.table("workspace_members") \
             .select("*") \
             .eq("workspace_id", str(workspace_id)) \
             .eq("user_id", str(user_id)) \
@@ -200,7 +200,7 @@ async def add_member_to_workspace(authed_client: AsyncClient, workspace_id: UUID
     payload = {"workspace_id": str(workspace_id), "user_id": str(user_id), "role": role.value}
     try:
         # (Upsert sudah benar)
-        response = await authed_client.table("WorkspaceMembers") \
+        response = await authed_client.table("workspace_members") \
             .upsert(payload, on_conflict="workspace_id, user_id", returning="representation") \
             .execute()
         if not response or not getattr(response, "data", None):
@@ -236,8 +236,8 @@ async def create_workspace_invitation(
             invitation_payload["type"] = InvitationType.USER_ID.value
 
             # --- PERBAIKAN: Panggilan DB paralel ---
-            member_check_task = authed_client.table("WorkspaceMembers").select("id").eq("workspace_id", str(workspace_id)).eq("user_id", str(invitee_user_id)).execute()
-            pending_check_task = authed_client.table("WorkspaceInvitations").select("invitation_id").eq("workspace_id", str(workspace_id)).eq("invitee_user_id", str(invitee_user_id)).eq("status", "pending").execute()
+            member_check_task = authed_client.table("workspace_members").select("id").eq("workspace_id", str(workspace_id)).eq("user_id", str(invitee_user_id)).execute()
+            pending_check_task = authed_client.table("workspace_invitations").select("invitation_id").eq("workspace_id", str(workspace_id)).eq("invitee_user_id", str(invitee_user_id)).eq("status", "pending").execute()
             member_check, pending_check = await asyncio.gather(member_check_task, pending_check_task)
             
             if member_check.data:
@@ -251,8 +251,8 @@ async def create_workspace_invitation(
             invitation_payload["type"] = InvitationType.EMAIL.value
             
             # --- PERBAIKAN: Panggilan DB paralel ---
-            member_check_task = authed_client.table("WorkspaceMembers").select("user:user_id(email)").eq("workspace_id", str(workspace_id)).execute()
-            pending_check_task = authed_client.table("WorkspaceInvitations").select("invitation_id").eq("workspace_id", str(workspace_id)).eq("invitee_email", invitee_email).eq("status", "pending").execute()
+            member_check_task = authed_client.table("workspace_members").select("user:user_id(email)").eq("workspace_id", str(workspace_id)).execute()
+            pending_check_task = authed_client.table("workspace_invitations").select("invitation_id").eq("workspace_id", str(workspace_id)).eq("invitee_email", invitee_email).eq("status", "pending").execute()
             member_check, pending_check = await asyncio.gather(member_check_task, pending_check_task)
 
             if member_check.data:
@@ -265,7 +265,7 @@ async def create_workspace_invitation(
         else:
              raise ValueError("Harus menyediakan invitee_email atau invitee_user_id.")
 
-        response: APIResponse = await authed_client.table("WorkspaceInvitations") \
+        response: APIResponse = await authed_client.table("workspace_invitations") \
             .insert(invitation_payload, returning="representation") \
             .execute() # <-- 'await'
         
@@ -307,7 +307,7 @@ async def list_workspace_members(
     (Async Native) Mengambil daftar anggota.
     """
     try:
-        response: APIResponse = await authed_client.table("WorkspaceMembers") \
+        response: APIResponse = await authed_client.table("workspace_members") \
             .select("role, user:user_id(user_id, name, email)") \
             .eq("workspace_id", str(workspace_id)) \
             .execute() # <-- 'await'
@@ -323,7 +323,7 @@ async def update_workspace_member_role(
     new_role: MemberRole
 ) -> Dict[str, Any]:
     try:
-        workspace = await authed_client.table("Workspaces").select("owner_user_id").eq("workspace_id", str(workspace_id)).maybe_single().execute()
+        workspace = await authed_client.table("workspaces").select("owner_user_id").eq("workspace_id", str(workspace_id)).maybe_single().execute()
         if not workspace or not workspace.data:
              raise NotFoundError("Workspace tidak ditemukan.")
         owner_id = workspace.data.get("owner_user_id")
@@ -332,7 +332,7 @@ async def update_workspace_member_role(
 
         # --- PERBAIKAN: Hapus .single() ---
         response: APIResponse = await (
-            authed_client.table("WorkspaceMembers")
+            authed_client.table("workspace_members")
             .update({"role": new_role.value}, returning="representation")
             .eq("workspace_id", str(workspace_id))
             .eq("user_id", str(user_id_to_update))
@@ -352,7 +352,7 @@ async def remove_workspace_member(
     user_id_to_remove: UUID
 ) -> bool:
     try:
-        workspace = await authed_client.table("Workspaces").select("owner_user_id").eq("workspace_id", str(workspace_id)).maybe_single().execute()
+        workspace = await authed_client.table("workspaces").select("owner_user_id").eq("workspace_id", str(workspace_id)).maybe_single().execute()
         if not workspace or not workspace.data:
              raise NotFoundError("Workspace tidak ditemukan.")
         owner_id = workspace.data.get("owner_user_id")
@@ -361,7 +361,7 @@ async def remove_workspace_member(
 
         # --- PERBAIKAN: Hapus .single() ---
         response: APIResponse = await (
-            authed_client.table("WorkspaceMembers")
+            authed_client.table("workspace_members")
             .delete(returning="representation")
             .eq("workspace_id", str(workspace_id))
             .eq("user_id", str(user_id_to_remove))
@@ -385,7 +385,7 @@ async def _find_invitation_by_token(
 ) -> Optional[Dict[str, Any]]:
     """Helper ASYNC: Mengambil undangan 'pending' berdasarkan token."""
     try:
-        response: APIResponse = await authed_client.table("WorkspaceInvitations") \
+        response: APIResponse = await authed_client.table("workspace_invitations") \
             .select("*") \
             .eq("token", token) \
             .eq("status", "pending") \
@@ -404,7 +404,7 @@ async def _delete_invitation_by_token(
 ) -> bool:
     """Helper ASYNC: Menghapus undangan setelah diproses."""
     try:
-        await authed_client.table("WorkspaceInvitations") \
+        await authed_client.table("workspace_invitations") \
             .delete() \
             .eq("token", token) \
             .execute() # <-- 'await'

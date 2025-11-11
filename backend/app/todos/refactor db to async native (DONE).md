@@ -25,7 +25,7 @@ Tujuan: Mengganti semua klien Supabase sinkron (Client) dengan klien asinkron (A
 
             Ganti authed_client.options.headers["Authorization"] = ... dengan authed_client.auth.set_session(access_token=token, refresh_token="dummy").
 
-            Tambahkan await pada panggilan profile_response = await authed_client.table("Users")...execute().
+            Tambahkan await pada panggilan profile_response = await authed_client.table("users")...execute().
 
         Tindakan (Klien Anonim): Ubah supabase_anon_client global menjadi AsyncClient dan inisialisasikan dengan create_async_client di dalam get_current_user_or_guest.
 

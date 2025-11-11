@@ -442,7 +442,7 @@ Terakhir, kita perbaiki sisa bug dan inkonsistensi yang ditemukan.
 
     Perbaiki Nama Tabel Audit:
 
-        Di audit_service.py, ubah admin_client.table("AuditLog") menjadi admin_client.table("SystemAudit") agar sesuai dengan skema SQL blueprint.
+        Di audit_service.py, ubah admin_client.table("AuditLog") menjadi admin_client.table("system_audit") agar sesuai dengan skema SQL blueprint.
 
     Perbaiki Notifikasi SSE:
 

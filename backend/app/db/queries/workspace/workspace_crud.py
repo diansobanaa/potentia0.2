@@ -22,7 +22,7 @@ async def create_workspace(
     (Async Native) Membuat Workspace baru di tabel 'Workspaces'.
     """
     try:
-        response: APIResponse = await authed_client.table("Workspaces").insert({
+        response: APIResponse = await authed_client.table("workspaces").insert({
             "name": name,
             "type": workspace_type,
             "owner_user_id": str(owner_id)
@@ -45,7 +45,7 @@ async def get_workspace_by_id(
     (Async Native) Mengambil detail workspace berdasarkan ID.
     """
     try:
-        response: APIResponse = await authed_client.table("Workspaces") \
+        response: APIResponse = await authed_client.table("workspaces") \
             .select("*") \
             .eq("workspace_id", str(workspace_id)) \
             .maybe_single() \
@@ -81,7 +81,7 @@ async def update_workspace(
     (Async Native) Memperbarui nama workspace.
     """
     try:
-        response = await authed_client.table("Workspaces") \
+        response = await authed_client.table("workspaces") \
             .update({"name": new_name}, returning="representation") \
             .eq("workspace_id", str(workspace_id)) \
             .eq("owner_user_id", str(user_id)) \
@@ -109,7 +109,7 @@ async def delete_workspace(
     Hanya owner yang dapat menghapus workspace.
     """
     try:
-        response = await authed_client.table("Workspaces") \
+        response = await authed_client.table("workspaces") \
             .delete(returning="representation") \
             .eq("workspace_id", str(workspace_id)) \
             .eq("owner_user_id", str(user_id)) \

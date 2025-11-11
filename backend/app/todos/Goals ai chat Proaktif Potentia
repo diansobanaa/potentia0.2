@@ -32,7 +32,7 @@ Tentu. Ini adalah To-Do List (Revisi V4) yang telah diperbarui dengan deskripsi 
         1.  `DROP FUNCTION IF EXISTS public.find_relevant_blocks(...)` (Hapus RPC lama yang pakai `canvas_id`).
         2.  `CREATE OR REPLACE FUNCTION find_relevant_blocks(query_embedding public.app_vector, ...)` (`PARSE: 92...` Bagian 3):
             * **Hapus** parameter `query_canvas_id`.
-            * Pastikan ia `JOIN "Canvas" c` untuk mendapatkan `canvas_title_result` (agar AI tahu blok ini dari *canvas* mana).
+            * Pastikan ia `JOIN "canvas" c` untuk mendapatkan `canvas_title_result` (agar AI tahu blok ini dari *canvas* mana).
             * **Pastikan** RLS Supabase Anda aktif di tabel `Blocks` dan/atau `Canvas` sehingga fungsi ini secara otomatis aman.
 
 * **[done] 1.3. Perbarui *Backend* (Python RAG Blok)**

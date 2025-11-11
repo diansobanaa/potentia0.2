@@ -24,7 +24,7 @@ async def get_user_workspaces_paginated(
     """
     try:
         # Query 1: Ambil data paginasi
-        list_task = authed_client.table("WorkspaceMembers") \
+        list_task = authed_client.table("workspace_members") \
             .select("Workspaces(*)") \
             .eq("user_id", str(user_id)) \
             .order("workspace_id", desc=True) \
@@ -32,7 +32,7 @@ async def get_user_workspaces_paginated(
             .execute()
 
         # Query 2: Ambil total hitungan (count)
-        count_task = authed_client.table("WorkspaceMembers") \
+        count_task = authed_client.table("workspace_members") \
             .select("workspace_id", count="exact") \
             .eq("user_id", str(user_id)) \
             .execute()
@@ -47,7 +47,7 @@ async def get_user_workspaces_paginated(
         total = getattr(count_response, "count", 0) or 0
 
         workspaces = [
-            item["Workspaces"] for item in data if item.get("Workspaces")
+            item["workspaces"] for item in data if item.get("workspaces")
         ]
         return workspaces, total
     except Exception as e:

@@ -35,7 +35,7 @@ async def add_canvas_member(
     try:
         # --- PERBAIKAN: Hapus 'to_thread' / 'sync_db_call', gunakan 'await' ---
         response: APIResponse = await (
-            authed_client.table("CanvasAccess")
+            authed_client.table("canvas_access")
             .upsert(
                 payload, 
                 on_conflict="canvas_id, user_id",
@@ -52,7 +52,7 @@ async def add_canvas_member(
         
     except Exception as e:
         logger.error(f"Error saat add_canvas_member (async) {user_id} ke {canvas_id}: {e}", exc_info=True)
-        if "foreign key constraint" in str(e) and "Users" in str(e):
+        if "foreign key constraint" in str(e) and "users" in str(e):
              raise NotFoundError(f"Pengguna dengan ID {user_id} tidak ditemukan.")
         if isinstance(e, (DatabaseError, NotFoundError)):
             raise 

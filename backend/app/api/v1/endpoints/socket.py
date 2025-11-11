@@ -124,7 +124,7 @@ async def _client_listener(websocket: WebSocket, canvas_id: UUID, user: User):
                         # Antrikan job (logika dipindahkan dari manager)
                         if action in ["create", "update"] and "content" in payload.get("update_data", {}):
                             admin_client = await get_supabase_admin_async_client()
-                            await block_queries.queue_embedding_job_db(admin_client, block_id, "Blocks")
+                            await block_queries.queue_embedding_job_db(admin_client, block_id, "blocks")
                         
                         if action in ["create", "update"] and "y_order" in payload.get("update_data", {}):
                             await lexorank_service.check_rebalance_needed(canvas_id)

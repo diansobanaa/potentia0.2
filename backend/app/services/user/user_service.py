@@ -50,7 +50,7 @@ class UserService:
             # B. Update ke public.Users (RLS)
             if public_payload:
                 logger.info(f"Memperbarui 'public.Users' (via RLS Async) untuk user {user_id_str}...")
-                response = await self.client.table("Users") \
+                response = await self.client.table("users") \
                     .update(public_payload) \
                     .eq("user_id", user_id_str) \
                     .execute() # <-- 'await'
@@ -58,7 +58,7 @@ class UserService:
                     raise NotFoundError("Gagal memperbarui profil di public.Users.")
 
             # C. Ambil Data Terbaru
-            response = await self.client.table("Users") \
+            response = await self.client.table("users") \
                 .select("*") \
                 .eq("user_id", user_id_str) \
                 .single() \
@@ -75,7 +75,7 @@ class UserService:
     async def update_user_profile(self, update_data: UserUpdate) -> Dict[str, Any]:
         """
         Memperbarui profil pengguna di `auth.users` (via Admin API)
-        DAN `public."Users"` (via RLS client).
+        DAN `public."users"` (via RLS client).
         """
         # --- 1. Siapkan Payload (Logika tidak berubah) ---
         auth_kwargs: Dict[str, Any] = {}

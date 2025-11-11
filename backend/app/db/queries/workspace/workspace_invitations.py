@@ -48,14 +48,14 @@ async def create_workspace_invitation(
             invitation_payload["type"] = InvitationType.USER_ID.value
 
             # Panggilan DB paralel untuk optimasi
-            member_check_task = authed_client.table("WorkspaceMembers") \
+            member_check_task = authed_client.table("workspace_members") \
                 .select("id") \
                 .eq("workspace_id", str(workspace_id)) \
                 .eq("user_id", str(invitee_user_id)) \
                 .execute()
 
             pending_check_task = authed_client.table(
-                "WorkspaceInvitations"
+                "workspace_invitations"
             ) \
                 .select("invitation_id") \
                 .eq("workspace_id", str(workspace_id)) \
@@ -87,13 +87,13 @@ async def create_workspace_invitation(
             invitation_payload["type"] = InvitationType.EMAIL.value
 
             # Panggilan DB paralel untuk optimasi
-            member_check_task = authed_client.table("WorkspaceMembers") \
+            member_check_task = authed_client.table("workspace_members") \
                 .select("user:user_id(email)") \
                 .eq("workspace_id", str(workspace_id)) \
                 .execute()
 
             pending_check_task = authed_client.table(
-                "WorkspaceInvitations"
+                "workspace_invitations"
             ) \
                 .select("invitation_id") \
                 .eq("workspace_id", str(workspace_id)) \
@@ -127,7 +127,7 @@ async def create_workspace_invitation(
             )
 
         response: APIResponse = await authed_client.table(
-            "WorkspaceInvitations"
+            "workspace_invitations"
         ) \
             .insert(invitation_payload, returning="representation") \
             .execute()
@@ -176,7 +176,7 @@ async def _find_invitation_by_token(
     """
     try:
         response: APIResponse = await authed_client.table(
-            "WorkspaceInvitations"
+            "workspace_invitations"
         ) \
             .select("*") \
             .eq("token", token) \
@@ -203,7 +203,7 @@ async def _delete_invitation_by_token(
     Helper ASYNC: Menghapus undangan setelah diproses.
     """
     try:
-        await authed_client.table("WorkspaceInvitations") \
+        await authed_client.table("workspace_invitations") \
             .delete() \
             .eq("token", token) \
             .execute()

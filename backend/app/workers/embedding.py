@@ -96,10 +96,10 @@ class EmbeddingWorker:
         try:
             # 1. Ambil Teks Konten dari DB
             # (Saat ini hanya mendukung 'Blocks')
-            if table_dest != "Blocks":
+            if table_dest != "blocks":
                 raise ValueError(f"Table destination '{table_dest}' tidak didukung.")
             
-            response: APIResponse = await admin_client.table("Blocks") \
+            response: APIResponse = await admin_client.table("blocks") \
                 .select("content") \
                 .eq("block_id", entity_id) \
                 .maybe_single() \
@@ -118,7 +118,7 @@ class EmbeddingWorker:
                 # [PERINGATAN] Pastikan kolom 'vector' Anda
                 # di 'migration_001_v0.4.3.sql' adalah VECTOR(768)
                 # agar sesuai dengan output Gemini
-                await admin_client.table("Blocks") \
+                await admin_client.table("blocks") \
                     .update({"vector": vector}) \
                     .eq("block_id", entity_id) \
                     .execute()

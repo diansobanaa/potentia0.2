@@ -17,7 +17,7 @@ async def get_blocks_in_canvas(
     """
     try:
         # --- PERBAIKAN: Gunakan 'await' ---
-        response = await authed_client.table("Blocks") \
+        response = await authed_client.table("blocks") \
             .select("*") \
             .eq("canvas_id", str(canvas_id)) \
             .order("y_order") \
@@ -39,7 +39,7 @@ async def get_block_by_id(
      """
      try:
         # --- PERBAIKAN: Gunakan 'await' ---
-        response = await authed_client.table("Blocks") \
+        response = await authed_client.table("blocks") \
             .select("*") \
             .eq("block_id", str(block_id)) \
             .maybe_single() \

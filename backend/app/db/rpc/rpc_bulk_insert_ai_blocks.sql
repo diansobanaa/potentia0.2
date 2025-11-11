@@ -4,15 +4,15 @@ CREATE OR REPLACE FUNCTION rpc_bulk_insert_ai_blocks(
     p_session_id UUID, -- 'generation_session_id'
     p_blocks JSONB     -- Array JSON [BlockCreatePayload]
 ) 
-RETURNS SETOF "Blocks" AS $$
+RETURNS SETOF "blocks" AS $$
 DECLARE
     v_base_y_order TEXT;
-    v_inserted_blocks "Blocks"[];
+    v_inserted_blocks "blocks"[];
     v_y_orders TEXT[];
     v_block_count INT;
 BEGIN
     -- 1. Dapatkan y_order terakhir (1x Panggilan DB)
-    SELECT y_order INTO v_base_y_order FROM "Blocks"
+    SELECT y_order INTO v_base_y_order FROM "blocks"
     WHERE canvas_id = p_canvas_id AND parent_id IS NULL
     ORDER BY y_order DESC LIMIT 1;
 
@@ -41,7 +41,7 @@ BEGIN
                 AS b(type TEXT, content TEXT, properties JSONB)
             WITH ORDINALITY AS t(b, row_num)
     )
-    INSERT INTO "Blocks" (
+    INSERT INTO "blocks" (
         block_id, canvas_id, creator_user_id, updated_by, 
         type, content, properties, y_order, generation_session_id,
         -- Set default v0.4.3
@@ -55,7 +55,7 @@ BEGIN
     RETURNING * INTO v_inserted_blocks; -- Kembalikan blok yang baru dibuat
 
     -- 5. Audit Batch (Solusi S5)
-    INSERT INTO "SystemAudit" (
+    INSERT INTO "system_audit" (
         user_id, action, entity, entity_id, status, details
     )
     VALUES (

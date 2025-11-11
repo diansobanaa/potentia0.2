@@ -22,7 +22,7 @@ async def check_user_membership(
     (Async Native) Memeriksa apakah pengguna adalah anggota workspace.
     """
     try:
-        response: APIResponse = await authed_client.table("WorkspaceMembers") \
+        response: APIResponse = await authed_client.table("workspace_members") \
             .select("*") \
             .eq("workspace_id", str(workspace_id)) \
             .eq("user_id", str(user_id)) \
@@ -76,7 +76,7 @@ async def add_member_to_workspace(
         "role": role.value
     }
     try:
-        response = await authed_client.table("WorkspaceMembers") \
+        response = await authed_client.table("workspace_members") \
             .upsert(
                 payload,
                 on_conflict="workspace_id, user_id",
@@ -104,7 +104,7 @@ async def list_workspace_members(
     (Async Native) Mengambil daftar anggota workspace.
     """
     try:
-        response: APIResponse = await authed_client.table("WorkspaceMembers") \
+        response: APIResponse = await authed_client.table("workspace_members") \
             .select("role, user:user_id(user_id, name, email)") \
             .eq("workspace_id", str(workspace_id)) \
             .execute()
@@ -129,7 +129,7 @@ async def update_workspace_member_role(
     Mencegah owner di-demote dari admin.
     """
     try:
-        workspace = await authed_client.table("Workspaces") \
+        workspace = await authed_client.table("workspaces") \
             .select("owner_user_id") \
             .eq("workspace_id", str(workspace_id)) \
             .maybe_single() \
@@ -147,7 +147,7 @@ async def update_workspace_member_role(
             )
 
         response: APIResponse = await (
-            authed_client.table("WorkspaceMembers")
+            authed_client.table("workspace_members")
             .update({"role": new_role.value}, returning="representation")
             .eq("workspace_id", str(workspace_id))
             .eq("user_id", str(user_id_to_update))
@@ -175,7 +175,7 @@ async def remove_workspace_member(
     Mencegah owner dihapus dari workspace.
     """
     try:
-        workspace = await authed_client.table("Workspaces") \
+        workspace = await authed_client.table("workspaces") \
             .select("owner_user_id") \
             .eq("workspace_id", str(workspace_id)) \
             .maybe_single() \
@@ -192,7 +192,7 @@ async def remove_workspace_member(
             )
 
         response: APIResponse = await (
-            authed_client.table("WorkspaceMembers")
+            authed_client.table("workspace_members")
             .delete(returning="representation")
             .eq("workspace_id", str(workspace_id))
             .eq("user_id", str(user_id_to_remove))

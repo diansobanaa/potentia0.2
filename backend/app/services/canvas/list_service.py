@@ -47,7 +47,7 @@ class CanvasListService:
         if canvas_data.workspace_id:
             try:
                 # Cek keanggotaan (menggunakan client user, bukan admin)
-                ws_member_resp = await self.client.table("WorkspaceMembers") \
+                ws_member_resp = await self.client.table("workspace_members") \
                     .select("role") \
                     .eq("workspace_id", str(canvas_data.workspace_id)) \
                     .eq("user_id", str(self.user.id)) \

@@ -17,7 +17,7 @@ async def log_action(user_id: UUID, action: str, details: dict):
         
         # [PERBAIKAN] Menggunakan nama tabel 'SystemAudit' dari blueprint,
         # bukan 'AuditLog'
-        response = await admin_client.table("SystemAudit").insert({
+        response = await admin_client.table("system_audit").insert({
             "user_id": str(user_id), 
             "action": action, 
             "details": details,

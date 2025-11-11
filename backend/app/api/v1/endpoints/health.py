@@ -61,7 +61,7 @@ async def readiness_probe():
     # Check database connectivity
     try:
         admin_client = await get_supabase_admin_async_client()
-        await admin_client.table("Users").select("user_id").limit(1).execute()
+        await admin_client.table("users").select("user_id").limit(1).execute()
     except Exception as e:
         logger.error(f"Database readiness check failed: {e}")
         raise HTTPException(

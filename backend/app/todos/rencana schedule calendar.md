@@ -226,7 +226,7 @@ Tujuan: Membangun skema 5-tabel yang baru dan menghapus skema lama.
 
     [DONE] TODO-DB-3 (Buat 5 Tabel Inti):
 
-        Tulis migrasi CREATE TABLE untuk 5 tabel baru. Pastikan semua referensi foreign key menggunakan nama tabel yang benar (misal: public."Users", public."Workspaces").
+        Tulis migrasi CREATE TABLE untuk 5 tabel baru. Pastikan semua referensi foreign key menggunakan nama tabel yang benar (misal: public."users", public."workspaces").
 
         public.calendars (Menggunakan visibility).
 

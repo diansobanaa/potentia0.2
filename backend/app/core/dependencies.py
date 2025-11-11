@@ -124,7 +124,7 @@ async def get_current_user_and_client(
         
         await authed_client.auth.set_session(access_token=token, refresh_token="dummy_refresh_token")
 
-        profile_response = await authed_client.table("Users") \
+        profile_response = await authed_client.table("users") \
             .select("*") \
             .eq("user_id", user_id) \
             .single() \

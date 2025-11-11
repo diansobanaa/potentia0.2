@@ -31,7 +31,7 @@ async def update_block_and_embedding(
 
     try:
         # 1. Ambil data block saat ini (perlu kolom version)
-        current_block_response = await authed_client.table("Blocks") \
+        current_block_response = await authed_client.table("blocks") \
             .select("ai_metadata, canvas_id, version") \
             .eq("block_id", str(block_id)) \
             .maybe_single() \
@@ -75,7 +75,7 @@ async def update_block_and_embedding(
         
         # NOTE: Implementasi Real-Time Production akan menambahkan: .eq("version", current_version)
         # untuk Optimistic Lock, tapi kita lewati dulu untuk menghindari perubahan di RPC.
-        response: APIResponse = await authed_client.table("Blocks") \
+        response: APIResponse = await authed_client.table("blocks") \
             .update(update_data, returning="representation") \
             .eq("block_id", str(block_id)) \
             .execute()

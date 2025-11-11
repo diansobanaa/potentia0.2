@@ -30,7 +30,7 @@ async def create_canvas_db(
     if canvas_data.workspace_id:
         payload["workspace_id"] = str(canvas_data.workspace_id)
     try:
-        response: APIResponse = await admin_client.table("Canvas") \
+        response: APIResponse = await admin_client.table("canvas") \
             .insert(payload, returning="representation") \
             .execute()
         if not response.data:
@@ -49,32 +49,32 @@ async def get_user_canvases_db(
     # (Implementasi tidak berubah)
     user_id_str = str(user_id)
     try:
-        ws_response: APIResponse = await admin_client.table("WorkspaceMembers") \
+        ws_response: APIResponse = await admin_client.table("workspace_members") \
             .select("workspace_id") \
             .eq("user_id", user_id_str) \
             .execute()
         workspace_ids = [m["workspace_id"] for m in ws_response.data or []]
-        personal_resp: APIResponse = await admin_client.table("Canvas") \
+        personal_resp: APIResponse = await admin_client.table("canvas") \
             .select("*") \
             .eq("creator_user_id", user_id_str) \
             .is_("workspace_id", "null") \
             .eq("is_archived", False) \
             .execute()
-        direct_resp: APIResponse = await admin_client.table("CanvasAccess") \
+        direct_resp: APIResponse = await admin_client.table("canvas_access") \
             .select("Canvas(*)") \
             .eq("user_id", user_id_str) \
             .eq("Canvas.is_archived", False) \
             .execute()
         workspace_canvases = []
         if workspace_ids:
-            workspace_canvas_resp: APIResponse = await admin_client.table("Canvas") \
+            workspace_canvas_resp: APIResponse = await admin_client.table("canvas") \
                 .select("*") \
                 .in_("workspace_id", workspace_ids) \
                 .eq("is_archived", False) \
                 .execute()
             workspace_canvases = workspace_canvas_resp.data or []
         all_canvases = (personal_resp.data or []) + \
-                       [item["Canvas"] for item in (direct_resp.data or []) if item.get("Canvas")] + \
+                       [item["canvas"] for item in (direct_resp.data or []) if item.get("canvas")] + \
                        workspace_canvases
         seen_ids = set()
         unique_canvases = []
@@ -98,7 +98,7 @@ async def update_canvas_db(
     [PERBAIKAN] Memindahkan 'returning' ke dalam '.update()'
     """
     try:
-        response: APIResponse = await admin_client.table("Canvas") \
+        response: APIResponse = await admin_client.table("canvas") \
             .update(update_data, returning="representation") \
             .eq("canvas_id", str(canvas_id)) \
             .execute()
@@ -118,7 +118,7 @@ async def delete_canvas_db(
 ):
     # (Implementasi tidak berubah)
     try:
-        response: APIResponse = await admin_client.table("Canvas") \
+        response: APIResponse = await admin_client.table("canvas") \
             .delete() \
             .eq("canvas_id", str(canvas_id)) \
             .returning("representation") \
@@ -155,7 +155,7 @@ async def get_canvas_with_access_db(
     # (Implementasi tidak berubah dari perbaikan terakhir)
     user_id_str = str(user_id)
     try:
-        canvas_response = await admin_client.table("Canvas") \
+        canvas_response = await admin_client.table("canvas") \
             .select("*") \
             .eq("canvas_id", str(canvas_id)) \
             .maybe_single() \
@@ -186,7 +186,7 @@ async def get_canvas_with_access_db(
             return access_info
         
         if canvas.get("workspace_id"):
-            ws_resp: APIResponse = await admin_client.table("WorkspaceMembers") \
+            ws_resp: APIResponse = await admin_client.table("workspace_members") \
                 .select("role") \
                 .eq("workspace_id", canvas["workspace_id"]) \
                 .eq("user_id", user_id_str) \
@@ -201,7 +201,7 @@ async def get_canvas_with_access_db(
                 elif workspace_role == "editor":
                     access_info["role"] = "editor"
         
-        access_resp: APIResponse = await admin_client.table("CanvasAccess") \
+        access_resp: APIResponse = await admin_client.table("canvas_access") \
             .select("role") \
             .eq("canvas_id", str(canvas_id)) \
             .eq("user_id", user_id_str) \

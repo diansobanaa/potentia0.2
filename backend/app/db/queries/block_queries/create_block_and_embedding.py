@@ -42,7 +42,7 @@ async def create_block_and_embedding(
     try:
         logger.info(f"(Query/Create) Inserting base block: {block_id}")
         
-        block_response = await authed_client.table("Blocks") \
+        block_response = await authed_client.table("blocks") \
             .insert(block_payload, returning="representation") \
             .execute()
 
@@ -84,7 +84,7 @@ async def create_block_and_embedding(
             
             logger.info(f"(Query/Create) Updating Blocks ai_metadata & vector for {block_id}...")
             
-            update_meta_response = await authed_client.table("Blocks") \
+            update_meta_response = await authed_client.table("blocks") \
                 .update(update_payload) \
                 .eq("block_id", str(block_id)) \
                 .execute()
@@ -101,5 +101,5 @@ async def create_block_and_embedding(
     except Exception as e:
         logger.error(f"(Query/Create) Error fatal di create_block_and_embedding: {e}", exc_info=True)
         # Lakukan cleanup jika gagal total
-        await authed_client.table("Blocks").delete().eq("block_id", str(block_id)).execute()
+        await authed_client.table("blocks").delete().eq("block_id", str(block_id)).execute()
         raise
