@@ -93,9 +93,7 @@ YANG SUDAH DIBUAT SAMPAI SEKARANG 06 NOV 25
 --     GET /stream/{id}/title: Endpoint streaming ndjson untuk judul otomatis.
 - CRUD Judul Manual: PATCH /chat/conversations/{id} untuk edit judul secara manual.
 
-Buat sistem schedule
-
-Belajar RAG
+Buat sistem schedule[done]
 Belajar MCP
 Belajar multi agent
 

@@ -1,6 +1,6 @@
 # File: backend/app/main.py
 # (Diperbaiki: Impor OTEL dan Handler Lifespan)
-
+import app.core.redis_patch # Patch Redis AsyncIO sebelum impor lainnya
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware

@@ -1,5 +1,5 @@
 # File: backend/app/core/dependencies.py
-# (Diperbarui untuk AsyncClient dan validasi token yang aman)
+# (PERBAIKAN v3.2 - Menghapus semua impor v1)
 
 import logging
 import asyncio
@@ -12,26 +12,27 @@ from supabase.client import AsyncClient, create_async_client
 from postgrest.exceptions import APIError
 import httpx
 
-from app.core.config import settings #
+from app.core.config import settings
+from langchain_core.runnables import Runnable
 from app.core.exceptions import DatabaseError, NotFoundError, PermissionError
-from app.db.supabase_client import get_supabase_admin_async_client
+# [MODIFIKASI v3.2] Impor agent v3.2
+from app.services.chat_engine.langgraph_agent import compiled_langgraph_agent 
 from app.models.user import User, SubscriptionTier
 from app.models.workspace import MemberRole
 from app.models.canvas import CanvasRole
 from app.models.schedule import CalendarVisibility, SubscriptionRole, Schedule, RsvpStatus, GuestRole
-from langchain_core.runnables import Runnable
 
 # --- Impor Database Queries ---
-# (Struktur query yang baru)
 from app.db.queries.canvas import canvas_queries, canvas_member_queries
 from app.db.queries.workspace import workspace_queries
 from app.db.queries.calendar import calendar_queries
-
+from app.db.supabase_client import get_supabase_admin_async_client
 
 # --- Impor Service ---
 from app.services.interfaces import IEmbeddingService
-from app.services.embedding_service import GeminiEmbeddingService #
-from app.services.chat_engine.judge_chain import get_judge_chain
+from app.services.embedding_service import GeminiEmbeddingService
+# [HAPUS v3.2] Hapus impor v1
+# from app.services.chat_engine.judge_chain import get_judge_chain 
 from app.services.conversations_list_service import ConversationListService
 from app.services.conversation_messages_service import ConversationMessagesService
 from app.services.title_stream_service import TitleStreamService
@@ -43,8 +44,6 @@ from app.services.calendar.schedule_service import ScheduleService
 from app.services.calendar.subscription_service import SubscriptionService
 from app.services.calendar.guest_service import GuestService
 from app.services.calendar.view_service import ViewService
-
-# --- [REFACTOR] Impor Service Canvas dari lokasi baru ---
 from app.services.canvas.list_service import CanvasListService
 from app.services.canvas.sync_manager import CanvasSyncManager
 from app.services.canvas.lexorank_service import LexoRankService
@@ -106,21 +105,19 @@ async def get_current_user_and_client(
         
         user_id = user_response_json.get("id")
         if not user_id:
-             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token data")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token data")
         logger.debug(f"Token valid untuk user_id: {user_id}")
         
     except httpx.HTTPStatusError as e:
-         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token validation failed")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token validation failed")
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Could not validate token: {str(e)}")
         
     try:
-        # --- PERBAIKAN: 'await' create_async_client ---
         authed_client: AsyncClient = await create_async_client(
             supabase_url=settings.SUPABASE_URL, 
             supabase_key=settings.SUPABASE_ANON_KEY
         )
-        # ---------------------------------------------
         
         await authed_client.auth.set_session(access_token=token, refresh_token="dummy_refresh_token")
 
@@ -141,9 +138,8 @@ async def get_current_user_and_client(
         
     except Exception as e:
         logger.error(f"Error setelah validasi token (saat ambil profil/buat klien): {e}", exc_info=True)
-        # Tangani error jika 'await' gagal
         if isinstance(e, (APIError, httpx.HTTPError)):
-             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error after auth: {str(e)}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error after auth: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal error after auth: {str(e)}")
 
 async def get_current_user(auth_info: dict = Depends(get_current_user_and_client)) -> User:
@@ -153,18 +149,27 @@ async def get_current_user_or_guest(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
-    # --- PERBAIKAN: 'await' klien anonim ---
     anon_client = await get_anon_async_client()
-         
+        
     if credentials:
         try:
             return await get_current_user_and_client(credentials)
         except HTTPException:
-            # --- PERBAIKAN: Pass klien ke GuestUser ---
             return {"user": GuestUser(client=anon_client), "client": anon_client}
     else:
-        # --- PERBAIKAN: Pass klien ke GuestUser ---
         return {"user": GuestUser(client=anon_client), "client": anon_client}
+    
+# (Tier/Role checks tidak berubah)
+async def get_user_tier(current_user: User = Depends(get_current_user)) -> SubscriptionTier:
+    return current_user.subscription_tier
+async def require_pro_user(tier: SubscriptionTier = Depends(get_user_tier)):
+    if tier not in [SubscriptionTier.pro, SubscriptionTier.admin]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Pro subscription required.")
+    return tier
+async def require_admin_user(current_user: User = Depends(get_current_user)):
+    if current_user.subscription_tier != SubscriptionTier.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+    return current_user
     
 # (Tier/Role checks tidak berubah)
 async def get_user_tier(current_user: User = Depends(get_current_user)) -> SubscriptionTier:
@@ -365,14 +370,6 @@ embedding_service_instance = GeminiEmbeddingService()
 async def get_embedding_service() -> IEmbeddingService:
     yield embedding_service_instance
 
-judge_chain_instance: Optional[Runnable] = None
-def get_judge_chain_singleton() -> Runnable:
-    global judge_chain_instance
-    if judge_chain_instance is None:
-        logger.info("Menginisialisasi Judge Chain Singleton...")
-        judge_chain_instance = get_judge_chain() 
-    yield judge_chain_instance
-    
 async def get_conversation_list_service(
     auth_info: Dict[str, Any] = Depends(get_current_user_and_client), 
 ) -> ConversationListService:
@@ -448,10 +445,17 @@ async def get_canvas_sync_manager() -> CanvasSyncManager:
     """Menyediakan instance singleton dari CanvasSyncManager."""
     return canvas_sync_manager_instance
 
+async def get_langgraph_agent() -> Runnable:
+    """
+    Menyediakan instance singleton dari agent LangGraph yang sudah dikompilasi.
+    """
+    return compiled_langgraph_agent
 
+# --- Tipe Annotated untuk Injeksi Dependensi (Final v3.2) ---
 AuthInfoDep = Annotated[Dict[str, Any], Depends(get_current_user_and_client)]
 EmbeddingServiceDep = Annotated[IEmbeddingService, Depends(get_embedding_service)]
-JudgeChainDep = Annotated[Runnable, Depends(get_judge_chain_singleton)]
+# [HAPUS v3.2] Hapus dep v1
+# JudgeChainDep = Annotated[Runnable, Depends(get_judge_chain_singleton)]
 
 # --- Layanan ---
 ConversationListServiceDep = Annotated[ConversationListService, Depends(get_conversation_list_service)]
@@ -467,6 +471,7 @@ SubscriptionServiceDep = Annotated[SubscriptionService, Depends(get_subscription
 GuestServiceDep = Annotated[GuestService, Depends(get_guest_service)]
 ViewServiceDep = Annotated[ViewService, Depends(get_view_service)]
 CanvasSyncManagerDep = Annotated[CanvasSyncManager, Depends(get_canvas_sync_manager)]
+LangGraphAgentDep = Annotated[Runnable, Depends(get_langgraph_agent)]
 
 # --- Keamanan Resource ---
 CanvasAccessDep = Annotated[Dict[str, Any], Depends(get_canvas_access)] 

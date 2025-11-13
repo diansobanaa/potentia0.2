@@ -44,7 +44,7 @@ class FreeBusyService:
         # --- 1. Coba Ambil dari Cache Redis (Async Native) ---
         try:
             # --- PERBAIKAN: Gunakan pipeline async ---
-            async with self.redis.pipeline() as pipe:
+            async with self.safe_pipeline(self.redis, transaction=False) as pipe:
                 for user_id in user_ids:
                     key = f"busy_index:{str(user_id)}"
                     # (Asumsi Skor = start_time, Value = "start:end")
@@ -91,7 +91,7 @@ class FreeBusyService:
             )
             
             # --- PERBAIKAN: Gunakan pipeline async ---
-            async with self.redis.pipeline() as redis_pipe:
+            async with self.safe_pipeline(self.redis, transaction=False) as pipe:
                 for instance in db_instances:
                     uid_str = str(instance['user_id'])
                     inst_start_ts = instance['start_time'].timestamp()

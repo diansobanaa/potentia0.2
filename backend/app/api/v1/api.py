@@ -1,5 +1,5 @@
 # File: backend/app/api/v1/api.py
-# (DIREFACTOR - Membersihkan include router)
+# (Diperbarui untuk Fase 4)
 
 from fastapi import APIRouter
 
@@ -8,9 +8,9 @@ from app.api.v1.endpoints import (
     blocks,
     calendars,
     calendar_subscriptions,
-    canvases,  # Router baru kita
-    # canvas_members, # <-- [REFACTOR] DIHAPUS DARI SINI
+    canvases,
     chat,
+    chat_actions, # <-- [BARU] Impor
     health, 
     invitations,
     notifications,
@@ -29,15 +29,9 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(blocks.router, prefix="/blocks", tags=["blocks"])
 api_router.include_router(calendars.router, prefix="/calendars", tags=["calendars"])
 api_router.include_router(calendar_subscriptions.router, prefix="/calendar_subscriptions", tags=["calendar_subscriptions"])
-
-# [REFACTOR] Hanya satu router canvas yang disertakan.
-# Prefix "/canvas" sudah didefinisikan di dalam 'canvases.py'
 api_router.include_router(canvases.router) 
-
-# [REFACTOR] Baris ini dihapus, karena sudah ditangani oleh canvases.router
-# api_router.include_router(canvas_members.router, prefix="/canvas_members", tags=["canvas_members"]) 
-
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(chat_actions.router) # <-- [BARU] Daftarkan router
 api_router.include_router(health.router, tags=["health"]) 
 api_router.include_router(invitations.router, prefix="/invitations", tags=["invitations"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

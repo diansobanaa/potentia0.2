@@ -1,7 +1,8 @@
 # File: backend/app/core/config.py
-# (DIPERBAIKI - Menambahkan DATABASE_URL yang hilang)
+# (Diperbarui Fase 5 - Menambahkan TAVILY_API_KEY & LANGGRAPH_ROLLOUT_PERCENT)
 
 from typing import Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from uuid import UUID
 
@@ -11,7 +12,6 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
     
-    # [PERBAIKAN] Tambahkan field ini agar Pydantic mau menerimanya
     DATABASE_URL: str 
 
     JWT_SECRET: str
@@ -19,11 +19,12 @@ class Settings(BaseSettings):
 
     # Google Gemini
     GEMINI_API_KEY: str
-    # Model Utama (Besar) untuk Generasi Jawaban & Tool Calling
     GEMINI_GENERATIVE_MODEL: str 
-    #Model Ringan & Cepat untuk Reranking
     GEMINI_RERANKER_MODEL: str
     GEMINI_ASESOR_MODEL: str
+    
+    # [BARU] Kunci API untuk Tools Eksternal (Fase 2)
+    TAVILY_API_KEY: Optional[str] = Field(None, description="Kunci API untuk Tavily Search tool.")
     
     # Model Deepseek untuk Pembaruan judul Conversation
     DEEPSEEK_API_KEY: str = ""
@@ -44,7 +45,14 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
 
+    # Observability
     OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
+
+    # [BARU] Feature Flag untuk LangGraph (Fase 2)
+    LANGGRAPH_ROLLOUT_PERCENT: float = Field(
+        default=1.0, 
+        description="Persentase (0.0 hingga 1.0) trafik chat yang akan menggunakan LangGraph v2.1."
+    )
 
     # Debug mode
     DEBUG: bool = False
@@ -52,4 +60,4 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding='utf-8')
 
     
-settings = Settings() 
+settings = Settings()

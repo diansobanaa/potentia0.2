@@ -15,15 +15,19 @@ logger = logging.getLogger(__name__)
 
 # =======================================================================
 # FUNGSI 1: Menambahkan Satu Pesan (Helper Async)
+# [MODIFIKASI] Tambahkan parameter token
 # =======================================================================
 async def add_message(
-    authed_client: AsyncClient, # <-- Tipe diubah
+    authed_client: AsyncClient,
     user_id: UUID,
     conversation_id: UUID,
     context_id: Optional[UUID],
     role: Literal["user", "assistant", "system", "tool"],
     content: str,
-    model_used: Optional[str] = None
+    model_used: Optional[str] = None,
+    # [BARU v3.2] Parameter untuk NFR Poin 8
+    input_tokens: int = 0,
+    output_tokens: int = 0
 ) -> Dict[str, Any]:
     """(Async Native) Menambahkan SATU pesan baru ke database."""
     try:
@@ -33,10 +37,11 @@ async def add_message(
             "context_id": str(context_id) if context_id else None,
             "role": role,
             "content": content,
-            "model_used": model_used
+            "model_used": model_used,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens
         }
         
-        # --- PERBAIKAN: Gunakan 'await' ---
         response: APIResponse = await authed_client.table("messages") \
             .insert(payload, returning="representation") \
             .execute()
@@ -52,38 +57,45 @@ async def add_message(
 
 # =======================================================================
 # FUNGSI 2: Menyimpan Giliran (Jalur Tulis / "Write Path")
+# [MODIFIKASI v3.2] Terima dan teruskan token count (Perbaikan Gap #1)
 # =======================================================================
 async def save_turn_messages(
-    authed_client: AsyncClient, # <-- Tipe diubah
+    authed_client: AsyncClient,
     user_id: UUID,
     conversation_id: UUID,
     context_id: Optional[UUID],
     user_message_content: str,
-    ai_message_content: str
+    ai_message_content: str,
+    # [BARU v3.2] Parameter untuk NFR Poin 8
+    total_input_tokens: int = 0,
+    total_output_tokens: int = 0
 ) -> Dict[str, Any]:
     """
     (Async Native) Menyimpan giliran percakapan (user dan AI).
     """
     try:
-        # --- PERBAIKAN: Panggil helper async ---
-        logger.debug(f"Menyimpan pesan PENGGUNA (async) untuk convo {conversation_id}...")
+        # Pesan Pengguna
         user_message_db = await add_message(
             authed_client=authed_client,
             user_id=user_id,
             conversation_id=conversation_id,
             context_id=context_id,
             role="user",
-            content=user_message_content
+            content=user_message_content,
+            input_tokens=0,
+            output_tokens=0
         )
         
-        logger.debug(f"Menyimpan pesan ASISTEN (async) untuk convo {conversation_id}...")
+        # Pesan Asisten (menyimpan SEMUA token count)
         await add_message(
             authed_client=authed_client,
             user_id=user_id,
             conversation_id=conversation_id,
             context_id=context_id,
             role="assistant",
-            content=ai_message_content
+            content=ai_message_content,
+            input_tokens=total_input_tokens, # [PERBAIKAN]
+            output_tokens=total_output_tokens # [PERBAIKAN]
         )
 
         if not user_message_db:
@@ -97,37 +109,43 @@ async def save_turn_messages(
 
 # =======================================================================
 # FUNGSI 3: Mengambil Pesan (Jalur Baca / "Read Path")
+# [BARU v3.2] (Perbaikan Kekurangan #4)
 # =======================================================================
-
-async def get_messages_by_context_id(
-    authed_client: AsyncClient, # <-- Tipe diubah
-    context_id: UUID,
-    limit: int = 15
+async def get_all_conversation_messages(
+    authed_client: AsyncClient,
+    user_id: UUID,
+    conversation_id: UUID,
+    limit: int = 1000 # Ambil batas yang sangat tinggi untuk 'load_full_history'
 ) -> List[Dict[str, Any]]:
     """
-    (Async Native) Mengambil riwayat pesan terbaru untuk context_id.
+    (Async Native) Mengambil SEMUA daftar pesan (user & assistant).
+    Digunakan oleh 'load_full_history' (Goal 'chatgpt flow').
     """
     try:
-        logger.debug(f"Mengambil {limit} pesan terakhir untuk context_id {context_id}...")
-        
-        # --- PERBAIKAN: Gunakan 'await' ---
-        response: APIResponse = await authed_client.table("messages") \
-            .select("role, content, created_at") \
-            .eq("context_id", str(context_id)) \
-            .order("created_at", desc=True) \
+        response = await authed_client.table("messages") \
+            .select(
+                "message_id",
+                "role",
+                "content",
+                "created_at"
+                # TODO: Ambil juga tool_calls jika disimpan sebagai JSON
+            ) \
+            .eq("user_id", str(user_id)) \
+            .eq("conversation_id", str(conversation_id)) \
+            .order("created_at", desc=False) \
             .limit(limit) \
             .execute()
 
-        if not response.data and isinstance(response.data, list):
-            logger.warning(f"Tidak ada riwayat pesan ditemukan untuk context_id {context_id}")
-            return []
-        
-        return sorted(response.data, key=lambda x: x['created_at'])
+        if response.data is None:
+            raise DatabaseError("Gagal mengambil data pesan dari database.")
+            
+        return response.data
 
     except Exception as e:
-        logger.error(f"Gagal mengambil pesan (async) untuk context {context_id}: {e}", exc_info=True)
-        raise DatabaseError(f"Error retrieving messages: {str(e)}")
-    
+        logger.error(f"Gagal mengambil semua data pesan (async) untuk convo {conversation_id}: {e}", exc_info=True)
+        raise DatabaseError(f"Error mengambil daftar pesan: {str(e)}")
+
+        
 async def get_first_turn_messages(
     authed_client: AsyncClient, # <-- Tipe diubah
     user_id: UUID,

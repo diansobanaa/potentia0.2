@@ -1,24 +1,106 @@
-# backend/app/services/redis_rate_limiter.py
-# (Diperbarui untuk redis.asyncio dan Task 3)
+# File: backend/app/services/redis_rate_limiter.py
+# (Final v3.2 - Divalidasi untuk LangGraph Checkpointer & Idempotency)
 
 import redis.asyncio as redis
 import time
 import logging
 from typing import Union, List, Dict, Any, Tuple
 from uuid import UUID
-from app.core.config import settings  
-from datetime import datetime, timedelta # DITAMBAHKAN
+from app.core.config import settings 
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
-
-# ... (Logika inisialisasi redis_client)
+# --- Inisialisasi Klien Redis Async (Global) ---
+# Klien ini akan dibagikan ke seluruh aplikasi
+# Ini adalah klien yang akan digunakan oleh:
+# 1. RedisSaver (LangGraph Checkpointer)
+# 2. Idempotency Lock (ToolExecutor)
+# 3. Rate Limiter (API Endpoints)
+# 4. Pelacakan Pengguna Aktif (Socket)
+redis_client: redis.Redis = None
+try:
+    logger.info(f"Mencoba menyambung ke Redis di: {settings.REDIS_URL}")
+    # Buat koneksi pool
+    redis_pool = redis.ConnectionPool.from_url(
+        settings.REDIS_URL,
+        max_connections=20,
+        decode_responses=True # Penting untuk LangGraph
+    )
+    redis_client = redis.Redis(connection_pool=redis_pool)
+    
+    # Coba ping untuk memastikan koneksi
+    # (Ini perlu dijalankan dalam event loop, kita pindahkan ke startup event di main.py)
+except Exception as e:
+    logger.critical(f"GAGAL menyambung ke Redis di {settings.REDIS_URL}: {e}")
+    redis_client = None
 
 class RedisRateLimiter:
-    # ... (Logika __init__ dan _is_allowed tidak berubah)
+    """
+    Mengelola rate limiting dan koneksi Redis.
+    """
+    
+    def __init__(self, client: redis.Redis = redis_client):
+        self.redis = client
+        self.redis_available = client is not None
 
-    # ... (Logika check_guest_limit, check_user_limit, check_invite_limit tidak berubah)
+    async def _is_allowed(self, key: str, limit: int, period_seconds: int) -> Tuple[bool, int]:
+        """
+        Logika inti rate limiting (algoritma sliding window log).
+        """
+        if not self.redis_available:
+            return True, 0 # Gagal terbuka (fail-open) jika Redis mati
 
-    # --- [BARU] Pelacakan Pengguna Aktif (Task 3) ---
+        try:
+            now = int(time.time() * 1000) # Waktu dalam milidetik
+            window_start = now - (period_seconds * 1000)
+
+            async with self.safe_pipeline(self.redis, transaction=False) as pipe:
+            
+                # 1. Hapus log lama (di luar jendela waktu)
+                pipe.zremrangebyscore(key, 0, window_start)
+                # 2. Tambahkan log saat ini
+                pipe.zadd(key, {str(now): now})
+                # 3. Hitung jumlah log dalam jendela
+                pipe.zcard(key)
+                # 4. Set kadaluwarsa (expire) untuk key
+                pipe.expire(key, period_seconds)
+                
+                results = await pipe.execute()
+            
+            current_count = results[2] # Hasil dari zcard
+            
+            if current_count > limit:
+                return False, (limit - current_count) # (Mengembalikan sisa negatif)
+            
+            return True, (limit - current_count) # (Mengembalikan sisa)
+
+        except Exception as e:
+            logger.error(f"Error pada Redis rate limiting: {e}", exc_info=True)
+            return True, 0 # Gagal terbuka (fail-open)
+    
+
+    # --- Metode Rate Limiting per Fitur ---
+
+    async def check_guest_limit(self, guest_id: str) -> bool:
+        """Limit untuk tamu (5 permintaan per 10 menit)."""
+        key = f"limit:guest:{guest_id}"
+        allowed, _ = await self._is_allowed(key, 5, 600)
+        return allowed
+
+    async def check_user_limit(self, user_id: UUID) -> bool:
+        """Limit untuk pengguna terdaftar (100 permintaan per 10 menit)."""
+        key = f"limit:user:{str(user_id)}"
+        allowed, _ = await self._is_allowed(key, 100, 600)
+        return allowed
+
+    async def check_invite_limit(self, user_id: UUID) -> bool:
+        """Limit undangan (5 undangan per jam)."""
+        key = f"limit:invite:{str(user_id)}"
+        allowed, _ = await self._is_allowed(key, 5, 3600)
+        return allowed
+
+    # --- Pelacakan Pengguna Aktif (Untuk Socket) ---
+
     async def add_active_user(
         self, 
         user_id: UUID, 
@@ -35,7 +117,7 @@ class RedisRateLimiter:
             user_key = str(user_id)
             now = int(time.time())
 
-            async with self.redis.pipeline() as pipe:
+            async with self.safe_pipeline(self.redis, transaction=False) as pipe:
                 # HSET: user_id -> timestamp (untuk cleanup)
                 pipe.hset(key, user_key, str(now)) 
                 # EXPIRE: Set TTL untuk seluruh canvas (diperbarui setiap kali ada koneksi)
