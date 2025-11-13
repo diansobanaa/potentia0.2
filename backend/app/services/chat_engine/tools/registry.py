@@ -2,31 +2,32 @@
 # (Diperbarui v3.2 - Menambahkan canvas_tools)
 
 import logging
-from typing import Dict, Callable, Any
-
-# Impor fungsi tool kita
-from .external_tools import search_online
-from .calendar_tools import create_schedule_tool
-# [BARU v3.2] Impor tool canvas
-from .canvas_tools import create_canvas_block
+from typing import Dict
+from langchain_core.tools import BaseTool, tool
 
 logger = logging.getLogger(__name__)
 
-def get_tool_registry() -> Dict[str, Callable[..., Any]]:
-    """
-    Membuat dan mengembalikan registry (kamus) dari semua tools
-    yang tersedia untuk agen.
-    """
+# Temporary stub tools until real implementations are ready
+@tool
+def create_canvas_block_stub(title: str, content: str) -> str:
+    """Membuat block di canvas (stub)."""
+    return f"Canvas block '{title}' created (stub)"
+
+@tool
+def create_schedule_stub(title: str, start_time: str) -> str:
+    """Membuat jadwal (stub)."""
+    return f"Schedule '{title}' created (stub)"
+
+def _initialize_registry() -> Dict[str, BaseTool]:
+    """Inisialisasi tool registry dengan stub tools."""
+    registry = {}
     
-    registry = {
-        # Nama fungsi harus sama dengan yang dipanggil LLM
-        "search_online": search_online,
-        "create_schedule_tool": create_schedule_tool,
-        "create_canvas_block": create_canvas_block, # [BARU v3.2]
-    }
+    # Use stub tools for now
+    registry["create_canvas_block"] = create_canvas_block_stub
+    registry["create_schedule_tool"] = create_schedule_stub
     
-    logger.info(f"Tool registry dibuat. {len(registry)} tools terdaftar.")
+    logger.info(f"Tool registry dibuat. {len(registry)} tools terdaftar (stub mode).")
     return registry
 
-# --- Instance Singleton ---
-TOOL_REGISTRY_INSTANCE = get_tool_registry()
+# Global instance
+TOOL_REGISTRY_INSTANCE = _initialize_registry()

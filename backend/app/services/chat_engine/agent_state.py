@@ -8,7 +8,7 @@ from langchain_core.messages import BaseMessage
 # Impor model Pydantic yang sudah ada untuk preferensi
 from app.services.chat_engine.schemas import ExtractedPreference
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     """
     Mendefinisikan struktur data utama (JSON-serializable) yang mengalir 
     melalui LangGraph dan disimpan di Redis Checkpointer.
@@ -55,5 +55,9 @@ class AgentState(TypedDict):
     # === 5. Metadata Operasional & Error ===
     errors: List[dict]
     retry_count: int
+
+    # Token & cost tracking
+    input_token_count: int
+    output_token_count: int
     cost_estimate: float
-    output_token_count: int # [BARU] Untuk token counting
+    api_call_count: int  # Make sure this exists

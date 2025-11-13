@@ -7,19 +7,17 @@ AGENT_PROMPT_VERSION = "v2.8.0" # Versi naik
 # 1. Prompt untuk Node: classify_intent
 # ===================================================================
 CLASSIFY_INTENT_PROMPT = f"""
-Anda adalah router klasifikasi niat (intent) berkecepatan tinggi.
-Tugas Anda adalah membaca pesan terakhir dan riwayat obrolan, lalu mengklasifikasikan niat pengguna ke dalam SATU kategori.
-Anda WAJIB merespons HANYA dengan format JSON yang valid sesuai dengan skema 'IntentClassification'.
-Versi Prompt: {AGENT_PROMPT_VERSION}
-(Definisi Kategori Niat: simple_chat, agentic_request, rag_query)
-(Anda juga HARUS menandai 'potential_preference' = true jika ...)
----
-Riwayat Obrolan (Singkat):
+Klasifikasikan niat pengguna berdasarkan input berikut.
+
+Riwayat percakapan:
 {{chat_history}}
----
-Pesan Pengguna:
+
+Pesan pengguna:
 {{user_message}}
----
+
+Klasifikasikan sebagai salah satu dari: "simple_chat", "rag_query", "tool_use"
+Juga tentukan apakah ada potensi preferensi yang perlu diekstrak (true/false).
+Versi Prompt: {AGENT_PROMPT_VERSION}
 """
 
 # ===================================================================
@@ -88,36 +86,19 @@ Konteks Terkompresi (Jawaban Anda):
 # 5. Prompt untuk Node: agent_node (Streaming Teks)
 # [MODIFIKASI v2.8] Hapus referensi ke AgentFinalAnswer
 # ===================================================================
-AGENT_SYSTEM_PROMPT = f"""
-Anda adalah Potentia, asisten AI dan mitra proaktif (Goal #1).
-Anda memiliki akses ke seperangkat tools untuk membantu pengguna.
-Versi Prompt: {AGENT_PROMPT_VERSION}
-Anda sekarang merespons sebagai Teks biasa (bukan JSON).
+AGENT_SYSTEM_PROMPT = """
+Kamu adalah asisten AI yang membantu pengguna.
 
-ATURAN UTAMA (Goal #3 & #4):
-1.  **Analisis Permintaan**: Tinjau pesan pengguna, KONTEKS RAG, dan riwayat tool.
-2.  **Pilih Rute**:
-    a.  **Jika Anda bisa menjawab langsung** (menggunakan KONTEKS RAG atau pengetahuan umum): Hasilkan jawaban teks biasa.
-    b.  **Jika Anda perlu tool**: Panggil satu atau lebih tools yang diperlukan.
-3.  **Sitasi (NFR Poin 11)**: Jika Anda menggunakan info dari 'KONTEKS RAG', Anda WAJIB menyertakan sitasi `[sumber: xxx]` di akhir kalimat.
-4.  **Proaktif (Goal #1)**: Jika Anda berpikir untuk memanggil tool yang mengubah data (seperti `create_schedule_tool`), Anda harus proaktif.
-    **Contoh:** "Saya menemukan waktu luang besok jam 10. Apakah Anda ingin saya jadwalkan rapat untuk 'Presentasi Q4' di kalender Anda?"
+Konteks RAG:
+{compressed_context}
 
-PERINGATAN:
-- Jika Anda memanggil tool, JANGAN tulis jawaban, panggil saja tool-nya.
-- Jika Anda menjawab, JANGAN panggil tool.
+Riwayat percakapan:
+{chat_history}
 
----
-KONTEKS RAG (Informasi dari Memori & Canvas):
-{{compressed_context}}
----
-RIWAYAT OBROLAN (termasuk hasil tool):
-{{chat_history}}
----
-PESAN PENGGUNA TERAKHIR (Fokus Anda):
-{{user_message}}
----
-JAWABAN ANDA (Teks atau Panggilan Tool):
+Pertanyaan pengguna saat ini:
+{user_message}
+
+Berikan respons yang membantu dan relevan.
 """
 
 # ===================================================================
@@ -140,19 +121,32 @@ Tool Call yang Diusulkan:
 # 7. Prompt untuk Node: extract_preferences_node (Solusi TODO #1)
 # ===================================================================
 EXTRACT_PREFERENCES_PROMPT = """
-Anda adalah "Asesor Model Pengguna" (User Model Assessor).
-Misi Anda HANYA menganalisis transkrip percakapan terakhir (`PESAN PENGGUNA` dan `JAWABAN AI`) untuk mendeteksi preferensi, fakta, atau batasan baru, dan mengekstraknya ke dalam format JSON `ExtractedPreference`.
-Anda WAJIB merespons HANYA dengan format JSON yang valid.
-Jika TIDAK ada preferensi baru, kembalikan: `{"preferences": []}`
----
-Transkrip Percakapan Terakhir:
+Ekstrak preferensi pengguna dari percakapan berikut.
 
-PESAN PENGGUNA:
+Pesan pengguna:
 {user_message}
 
-JAWABAN AI:
-{final_ai_response}
----
+Respons AI:
+{ai_response}
+
+Identifikasi preferensi apa pun yang dinyatakan pengguna (misalnya: suka kopi, hobi tertentu, jadwal rutin, dll.).
+
+Kembalikan dalam format JSON dengan struktur:
+{{
+  "preferences": [
+    {{
+      "category": "food_beverage",
+      "key": "favorite_drink",
+      "value": "kopi",
+      "confidence": 0.9
+    }}
+  ]
+}}
+
+Jika tidak ada preferensi, kembalikan:
+{{
+  "preferences": []
+}}
 """
 
 # ===================================================================

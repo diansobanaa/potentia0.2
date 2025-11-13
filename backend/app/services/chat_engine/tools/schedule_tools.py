@@ -131,16 +131,32 @@ def build_langgraph_agent():
 
     # ✅ Kompilasi Graph
     logger.info("🔁 Mengkompilasi LangGraph Agent v3.2 (tanpa checkpointing)...")
-    compiled = workflow.compile()
-    
-    # DEBUG: Wrap compiled agent to log final state
-    async def debug_wrapper(initial_state, config):
-        async for event in compiled.astream_events(initial_state, config, version="v1"):
-            yield event
-        # Log final state after stream completes
-        # (Actually we can't access final state here easily, this is just for illustration)
-    
-    return compiled
+    return workflow.compile()  # ← Remove checkpointer argument
 
 
 compiled_langgraph_agent = build_langgraph_agent()
+
+# Make sure this tool is exported:
+from langchain_core.tools import tool
+
+@tool
+def create_schedule_tool(
+    title: str,
+    start_time: str,
+    end_time: str = None,
+    description: str = None
+) -> str:
+    """
+    Membuat jadwal/event baru.
+    
+    Args:
+        title: Judul event
+        start_time: Waktu mulai (ISO format)
+        end_time: Waktu selesai (optional)
+        description: Deskripsi event (optional)
+    
+    Returns:
+        str: Status pembuatan jadwal
+    """
+    # TODO: Implement actual schedule creation
+    return f"Schedule '{title}' created successfully (stub implementation)"

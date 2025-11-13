@@ -187,3 +187,41 @@ async def get_first_turn_messages(
     except Exception as e:
         logger.error(f"Gagal mengambil pesan pertama (async) untuk convo {conversation_id}: {e}", exc_info=True)
         return None, None
+
+# =======================================================================
+# WRAPPER METHOD: create_message
+# =======================================================================
+async def create_message(
+    client,
+    user_id: UUID,
+    conversation_id: UUID,
+    role: str,
+    content: str,
+    tool_calls: list = None
+):
+    """
+    Create a new message in the database.
+    
+    Args:
+        client: Supabase client
+        user_id: User UUID
+        conversation_id: Conversation UUID
+        role: Message role ('user' or 'assistant')
+        content: Message content
+        tool_calls: Optional tool calls data
+    
+    Returns:
+        dict: Created message data
+    """
+    message_data = {
+        "user_id": str(user_id),
+        "conversation_id": str(conversation_id),
+        "role": role,
+        "content": content
+    }
+    
+    if tool_calls:
+        message_data["tool_calls"] = tool_calls
+    
+    result = await client.table("messages").insert(message_data).execute()
+    return result.data[0] if result.data else None

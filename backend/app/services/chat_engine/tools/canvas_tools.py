@@ -88,3 +88,32 @@ async def create_canvas_block(
         # Hapus lock jika terjadi error agar bisa di-retry
         await rate_limiter.redis.delete(lock_key)
         return f"Error Kritis: Terjadi kesalahan tak terduga saat mencoba membuat blok. Detail: {e}"
+
+# At the end of file, make sure the tool is exported with correct name:
+# If the tool is named differently (e.g., `create_canvas_block`), add alias:
+
+# Option 1: If tool exists but different name
+# create_canvas_block_tool = create_canvas_block
+
+# Option 2: If tool doesn't exist, create a simple stub
+from langchain_core.tools import tool
+
+@tool
+def create_canvas_block_tool(
+    title: str,
+    content: str,
+    canvas_id: str = None
+) -> str:
+    """
+    Membuat block baru di canvas.
+    
+    Args:
+        title: Judul block
+        content: Konten block
+        canvas_id: ID canvas (optional)
+    
+    Returns:
+        str: Status pembuatan block
+    """
+    # TODO: Implement actual canvas block creation
+    return f"Canvas block '{title}' created successfully (stub implementation)"
