@@ -10,9 +10,12 @@ import tiktoken
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Optional, Literal
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import HumanMessage, BaseMessage, AIMessage, AIMessageChunk, ToolMessage
+from pydantic import BaseModel, Field
+from typing import Optional
+from uuid import UUID
 
 from app.core.dependencies import (
     AuthInfoDep, 
@@ -100,7 +103,30 @@ def _get_user_permissions(user: User) -> List[str]:
     return base_permissions
 
 # --- Endpoint Chat (Refactored v3.2) ---
-@router.post("/")
+class LLMConfig(BaseModel):
+    """LLM configuration per request."""
+    model: str = Field(..., description="Model identifier (e.g., 'gemini-2.5-flash')")
+    temperature: Optional[float] = Field(0.2, ge=0.0, le=2.0, description="0.0-2.0")
+    max_tokens: Optional[int] = Field(None, ge=1, le=32000, description="Optional max tokens")
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=10000, description="User message")
+    conversation_id: Optional[UUID] = Field(None, description="If null → create new; else reuse if exists")
+    llm_config: Optional[LLMConfig] = Field(None, description="Frontend-selected model/params")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Explain quantum computing",
+                "conversation_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "llm_config": {
+                    "model": "gemini-2.5-flash",
+                    "temperature": 0.7
+                }
+            }
+        }
+
+@router.post("/", summary="Send chat message (streaming)")
 async def handle_chat(
     request: ChatRequest,
     background_tasks: BackgroundTasks,
@@ -109,15 +135,64 @@ async def handle_chat(
     langgraph_agent: LangGraphAgentDep 
 ) -> StreamingResponse:
     """
-    Endpoint utama (STREAMING) untuk semua interaksi chat pengguna.
-    Menggunakan arsitektur LangGraph v3.2 dengan service layer.
+    Chat endpoint with frontend-driven model selection.
+    
+    ## Supported Models (by provider):
+    
+    **Gemini (Google)**
+    - `gemini-flash-lite-latest` - Fast, lightweight model
+    - `gemini-2.5-pro` - Advanced reasoning and complex tasks
+    - `gemini-2.5-flash` - Balanced speed and capability
+    
+    **OpenAI**
+    - `gpt-4o-mini` - Fast GPT-4 variant
+    - `gpt-5-pro` - Most advanced model
+    - `gpt-4.1` - Enhanced GPT-4
+    
+    **DeepSeek**
+    - `deepseek-chat` - General conversation
+    - `deepseek-v3` - Latest version
+    - `deepseek-r1` - Reasoning-focused
+    
+    **Kimi (Moonshot)**
+    - `moonshot-v1-32k` - 32K context window
+    - `moonshot-v1-8k` - 8K context window
+    - `moonshot-v1-128k` - 128K context window
+    - `kimi-k2-thinking` - Enhanced reasoning
+    
+    **XAI (Grok)**
+    - `grok-4-fast-reasoning-latest` - Fast reasoning
+    - `grok-4` - Standard model
+    - `grok-code-fast-1` - Code-optimized
+    
+    ## Request Body:
+    - `message`: User's message (required)
+    - `conversation_id`: Conversation UUID (optional, creates new if null)
+    - `llm_config`: Model configuration (optional, uses DEFAULT_MODEL if not provided)
+        - `model`: Model identifier from list above
+        - `temperature`: 0.0-2.0 (default: 0.2)
+        - `max_tokens`: Max output tokens (optional)
+    
+    ## Response:
+    Returns Server-Sent Events (SSE) stream with:
+    - AI response chunks
+    - Token usage metadata
+    - Final state information
+    
+    Use `/models/available` to check which models are currently configured.
     """
     user = auth_info["user"]
     client = auth_info["client"]
 
-    logger.warning(f"Memulai LangGraph v3.2 (Streaming) untuk user {user.id}...")
-    
-    # FIX: Remove 'await' - async generator is used directly
+    # Log received LLM config
+    if request.llm_config:
+        logger.info(
+            f"🎯 Received llm_config: model={request.llm_config.model}, "
+            f"temperature={request.llm_config.temperature}"
+        )
+    else:
+        logger.info("⚠️  No llm_config provided, will use DEFAULT_MODEL")
+
     stream_generator = ChatService.create_chat_stream(
         user=user,
         client=client,
@@ -125,10 +200,24 @@ async def handle_chat(
         conversation_id=request.conversation_id,
         background_tasks=background_tasks,
         embedding_service=embedding_service,
-        langgraph_agent=langgraph_agent
+        langgraph_agent=langgraph_agent,
+        llm_config=request.llm_config.dict() if request.llm_config else None  # pass-through
     )
     
     return StreamingResponse(stream_generator, media_type="application/x-ndjson")
+
+
+@router.get("/models/available", summary="Get available models", description="""
+Get list of LLM models that backend can currently support.
+Models are only listed if their API keys are configured.
+""")
+async def get_available_models():
+    """Get list of supported models based on configured API keys."""
+    from app.services.chat_engine.llm_provider import get_available_models
+    
+    models = get_available_models()
+    
+    return {"available_models": models, "total_count": len(models)}
 
 # --- ENDPOINT A: DAFTAR CONVERSATION & PESAN DENGAN PAGINASI ---
 @router.get("/conversations-list", response_model=PaginatedConversationListResponse)

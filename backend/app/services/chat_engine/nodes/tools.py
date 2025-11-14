@@ -52,7 +52,7 @@ async def reflection_node(state: AgentState, config: RunnableConfig) -> Dict[str
             
             try:
                 prompt = REFLECTION_PROMPT.format(tool_call_json=tool_call_json)
-                llm = llm_flash_client.get_llm().with_structured_output(ToolApprovalRequest)
+                llm = llm_flash_client.with_structured_output(ToolApprovalRequest)
                 result: ToolApprovalRequest = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
                 
                 if result.approval_required:

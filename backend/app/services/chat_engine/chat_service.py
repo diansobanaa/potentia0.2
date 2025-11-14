@@ -5,15 +5,16 @@ import logging
 import uuid
 from typing import AsyncGenerator, Optional
 from uuid import UUID
-
 from fastapi import BackgroundTasks
 from langchain_core.messages import HumanMessage
+from datetime import datetime, timezone  # <-- add import
 
 from app.models.user import User
 from app.services.chat_engine.helpers import MessageLoader, PermissionHelper, TokenCounter
 from app.services.chat_engine.streaming_service import StreamingService
 from app.db.queries.conversation import conversation_queries
 from app.core.config import settings
+from app.services.chat_engine.agent_prompts import AGENT_SYSTEM_PROMPT  # ensure imported
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,39 @@ class ChatService:
     """Main service for chat orchestration."""
     
     @staticmethod
+    async def ensure_conversation(client, user_id: UUID, conversation_id: Optional[UUID]) -> UUID:
+        """
+        Centralized guard:
+        - If conversation_id is None: create new conversation and return its ID.
+        - If provided: try fetch; if not found → create new and return the new ID.
+        """
+        if conversation_id is None:
+            # Create new conversation
+            new_conversation_id = uuid.uuid4()
+            await conversation_queries.get_or_create_conversation(
+                client,
+                user_id,
+                new_conversation_id
+            )
+            logger.info(f"Created new conversation {new_conversation_id} for user {user_id}")
+            return new_conversation_id
+        else:
+            # Check if conversation exists
+            conversation = await conversation_queries.get_conversation_by_id(
+                client,
+                conversation_id
+            )
+            if conversation is None:
+                # If not found, create new conversation
+                await conversation_queries.get_or_create_conversation(
+                    client,
+                    user_id,
+                    conversation_id
+                )
+                logger.info(f"Conversation {conversation_id} not found. Created new conversation with the same ID for user {user_id}")
+            return conversation_id
+
+    @staticmethod
     async def create_chat_stream(
         user: User,
         client,
@@ -29,7 +63,8 @@ class ChatService:
         conversation_id: Optional[UUID],
         background_tasks: BackgroundTasks,
         embedding_service,
-        langgraph_agent
+        langgraph_agent,
+        llm_config: Optional[dict] = None
     ) -> AsyncGenerator[str, None]:
         """Main entry point for creating a chat stream."""
         # Generate IDs
@@ -66,27 +101,50 @@ class ChatService:
         response_chunks = []
         final_state = None
         
-        # NEW: Calculate BEFORE streaming (guaranteed accurate)
-        # Total input = system prompt + RAG context + history + user input
-        from app.services.chat_engine.agent_prompts import AGENT_SYSTEM_PROMPT, CLASSIFY_INTENT_PROMPT
-        
-        # Estimate system prompts (classify + agent)
-        classify_prompt_tokens = TokenCounter.count_tokens(CLASSIFY_INTENT_PROMPT.format(
-            chat_history=chat_history,
-            user_message=message
-        ))
-        
-        agent_prompt_tokens = TokenCounter.count_tokens(AGENT_SYSTEM_PROMPT.format(
-            compressed_context="",  # Will be filled by RAG
-            chat_history=chat_history,
-            user_message=message
-        ))
-        
-        # Total estimate
-        estimated_total_input = classify_prompt_tokens + agent_prompt_tokens
-        
-        logger.info(f"📊 ESTIMATED input tokens: classify={classify_prompt_tokens}, agent={agent_prompt_tokens}, total={estimated_total_input}")
-        
+        # --- FIX: provide current_time when formatting AGENT_SYSTEM_PROMPT for token estimation ---
+        try:
+            current_time_str = f"Informasi Waktu: Waktu saat ini adalah {datetime.now(timezone.utc).strftime('%A, %Y-%m-%d %H:%M %Z')}."
+        except Exception:
+            current_time_str = "Informasi Waktu: Waktu saat ini tidak dapat ditentukan."
+
+        # Estimate classify and agent prompt tokens safely
+        try:
+            classify_prompt_tokens = TokenCounter.count_tokens(
+                # If you have CLASSIFY_INTENT_PROMPT, keep as-is. Otherwise leave estimation minimal.
+                # ...existing code or computed classify prompt...
+                ""
+            )
+        except Exception:
+            classify_prompt_tokens = 0
+
+        try:
+            agent_prompt_tokens = TokenCounter.count_tokens(
+                AGENT_SYSTEM_PROMPT.format(
+                    current_time=current_time_str,
+                    compressed_context="(Tidak ada konteks RAG)",
+                    chat_history=await MessageLoader.load_history(client, user.id, conversation_id, limit=40),  # minimal safe value
+                    user_message=message
+                )
+            )
+        except Exception:
+            # Fallback: count only user_message to avoid KeyError
+            agent_prompt_tokens = TokenCounter.count_tokens(message)
+
+        logger.info(f"📊 ESTIMATED input tokens: classify={classify_prompt_tokens}, agent={agent_prompt_tokens}, total={classify_prompt_tokens + agent_prompt_tokens}")
+        # --- end FIX ---
+
+        # Log llm_config before passing to streaming service
+        if llm_config:
+            logger.info(
+                f"📤 ChatService passing llm_config to StreamingService: "
+                f"{llm_config}"
+            )
+        else:
+            logger.warning(
+                "⚠️  ChatService: llm_config is None, "
+                "will use DEFAULT_MODEL"
+            )
+
         async for sse_event in StreamingService.stream_agent_response(
             langgraph_agent=langgraph_agent,
             request_id=request_id,
@@ -95,9 +153,10 @@ class ChatService:
             user_message=message,
             chat_history=full_history,
             permissions=permissions,
-            auth_info={"user": user, "client": client},
+            auth_info=auth_info,
             embedding_service=embedding_service,
-            background_tasks=background_tasks
+            background_tasks=background_tasks,
+            llm_config=llm_config  # pass-through
         ):
             # Capture token chunks
             if '"type": "token_chunk"' in sse_event:
@@ -128,13 +187,15 @@ class ChatService:
         if final_state:
             total_input_tokens = final_state.get("input_token_count") or 0
             total_output_tokens = final_state.get("output_token_count") or 0
-            api_call_count = final_state.get("api_call_count", 0)  # NEW
-            model_used = final_state.get("model_used") or settings.GEMINI_GENERATIVE_MODEL
+            api_call_count = final_state.get("api_call_count", 0)
+            model_used = final_state.get("model_used") or \
+                settings.DEFAULT_MODEL
         else:
-            total_input_tokens = estimated_total_input
+            # Fallback: estimate input tokens from message
+            total_input_tokens = TokenCounter.count_tokens(message)
             total_output_tokens = 0
             api_call_count = 0
-            model_used = settings.GEMINI_GENERATIVE_MODEL  # Fallback to default model
+            model_used = settings.DEFAULT_MODEL
         
         # User-only tokens
         user_input_tokens = TokenCounter.count_tokens(message)

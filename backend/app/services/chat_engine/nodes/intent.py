@@ -42,7 +42,7 @@ async def classify_intent(state: AgentState, config: RunnableConfig) -> Dict[str
             # DEBUG: Log prompt yang dikirim
             logger.debug(f"REQUEST_ID: {request_id} - Prompt classify_intent (first 200 chars): {prompt[:200]}...")
             
-            llm = llm_flash_client.get_llm().with_structured_output(IntentClassification)
+            llm = llm_flash_client.with_structured_output(IntentClassification)
             result: IntentClassification = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
             
             # DEBUG: Log response dari LLM

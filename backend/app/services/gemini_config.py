@@ -17,9 +17,8 @@ async def stream_gemini_response(prompt: str) -> AsyncIterable[str]:
     Sumber:
     """
     try:
-        # [PERBAIKAN] Menggunakan nama model dari settings,
-        # bukan 'gemini-2.5-flash-preview-09-2025'
-        model = genai.GenerativeModel(settings.GEMINI_GENERATIVE_MODEL) 
+        # Use DEFAULT_MODEL from settings
+        model = genai.GenerativeModel(settings.DEFAULT_MODEL) 
         
         stream = await model.generate_content_async(prompt, stream=True) 
         

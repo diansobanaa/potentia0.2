@@ -16,9 +16,8 @@ class GeminiClient:
         enable_automatic_function_calling: bool = False
     ):
         self.api_key = api_key or settings.GEMINI_API_KEY
-        # --- PERBAIKAN: Gunakan settings jika model_name tidak diberikan ---
-        self.model_name = model_name or settings.GEMINI_GENERATIVE_MODEL
-        # ---
+        # Use DEFAULT_MODEL if model_name not provided
+        self.model_name = model_name or settings.DEFAULT_MODEL
         self.enable_auto_function_calling = enable_automatic_function_calling
 
         # Configure once

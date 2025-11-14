@@ -4,6 +4,7 @@ Chat history loading utilities.
 import logging
 from typing import List, Optional
 from uuid import UUID
+from dateutil.parser import parse as dt_parse  # <-- [TAMBAHKAN]
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
@@ -37,17 +38,28 @@ class MessageLoader:
             # Sort by created_at (ascending = oldest first)
             for msg in sorted(messages_data, key=lambda x: x['created_at']):
                 content = msg.get("content", "")
-                role = msg.get("role")  # Get role from DB
+                role = msg.get("role")
                 
+                # --- [PERUBAHAN DIMULAI DI SINI] ---
+                # 1. Parse timestamp dari DB
+                try:
+                    created_at_dt = dt_parse(msg['created_at'])
+                    timestamp_str = created_at_dt.strftime('%Y-%m-%d %H:%M %Z')
+                except Exception:
+                    timestamp_str = "timestamp_unknown"
+
+                # 2. Gabungkan timestamp ke konten
+                formatted_content = f"[{timestamp_str}] {content}"
+                # --- [PERUBAHAN SELESAI] ---
+
                 if role == 'user':
-                    history.append(HumanMessage(content=content))
-                    
-                elif role == 'ai':  # FIX: Changed from 'assistant' to 'ai'
+                    history.append(HumanMessage(content=formatted_content))
+                elif role == 'ai':  # FIX: gunakan 'ai' sebagai role asisten
                     tool_calls = msg.get("tool_calls")
                     if tool_calls:
-                        history.append(AIMessage(content=content, tool_calls=tool_calls))
+                        history.append(AIMessage(content=formatted_content, tool_calls=tool_calls))
                     else:
-                        history.append(AIMessage(content=content))
+                        history.append(AIMessage(content=formatted_content))
             
             logger.debug(f"Loaded {len(history)} messages for conversation {conversation_id}")
             return history

@@ -1,5 +1,5 @@
 # File: backend/app/core/config.py
-# (Diperbarui Fase 5 - Menambahkan TAVILY_API_KEY & LANGGRAPH_ROLLOUT_PERCENT)
+# (Disesuaikan untuk arsitektur 'model-dinamis' dari frontend)
 
 from typing import Optional
 from pydantic import Field
@@ -11,30 +11,17 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
-    
     DATABASE_URL: str 
-
     JWT_SECRET: str
     SUPABASE_JWT_SECRET: str
 
-    # Google Gemini
-    GEMINI_API_KEY: str
-    GEMINI_GENERATIVE_MODEL: str 
-    GEMINI_RERANKER_MODEL: str
-    GEMINI_ASESOR_MODEL: str
-    
-    # [BARU] Kunci API untuk Tools Eksternal (Fase 2)
+    # External Tools
     TAVILY_API_KEY: Optional[str] = Field(None, description="Kunci API untuk Tavily Search tool.")
-    
-    # Model Deepseek untuk Pembaruan judul Conversation
-    DEEPSEEK_API_KEY: str = ""
-    DEEPSEEK_API_URL: str = "https://api.deepseek.com/chat/completions"
 
     # RAG Service
     DEFAULT_ROLE_ID: UUID
     SEEDING_ADMIN_KEY: str  
-
-    AI_AGENT_USER_ID: UUID # ID Pengguna untuk AI Agent
+    AI_AGENT_USER_ID: UUID 
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
@@ -48,16 +35,44 @@ class Settings(BaseSettings):
     # Observability
     OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
 
-    # [BARU] Feature Flag untuk LangGraph (Fase 2)
-    LANGGRAPH_ROLLOUT_PERCENT: float = Field(
-        default=1.0, 
-        description="Persentase (0.0 hingga 1.0) trafik chat yang akan menggunakan LangGraph v2.1."
-    )
+    # Feature Flag
+    LANGGRAPH_ROLLOUT_PERCENT: float = Field(default=1.0)
 
     # Debug mode
     DEBUG: bool = False
     
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding='utf-8')
-
+    # ===== LLM Provider Credentials =====
+    # Backend internal models (RAG pipeline only)
+    GEMINI_RERANKER_MODEL: str = Field(default="gemini-flash-lite-latest", env="GEMINI_RERANKER_MODEL")
+    GEMINI_ASESOR_MODEL: str = Field(default="gemini-flash-lite-latest", env="GEMINI_ASESOR_MODEL")
     
+    # Provider API keys & base URLs
+    GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
+    OPENAI_API_KEY: str = Field(default="", env="OPENAI_API_KEY")
+    OPENAI_BASE_URL: str = Field(default="https://api.openai.com/v1", env="OPENAI_BASE_URL")
+    DEEPSEEK_API_KEY: str = Field(default="", env="DEEPSEEK_API_KEY")
+    DEEPSEEK_BASE_URL: str = Field(default="https://api.deepseek.com", env="DEEPSEEK_BASE_URL")
+    KIMI_API_KEY: str = Field(default="", env="KIMI_API_KEY")
+    KIMI_BASE_URL: str = Field(default="https://api.moonshot.cn/v1", env="KIMI_BASE_URL")
+    XAI_API_KEY: str = Field(default="", env="XAI_API_KEY")
+    XAI_BASE_URL: str = Field(default="https://api.x.ai/v1/chat/completions", env="XAI_BASE_URL")
+    
+    # Fallback defaults (only used if request has no llm_config)
+    DEFAULT_MODEL: str = Field(
+        default="gemini-2.5-flash",
+        env="DEFAULT_MODEL"
+    )
+    DEFAULT_TEMPERATURE: float = Field(
+        default=0.2,
+        env="DEFAULT_TEMPERATURE"
+    )
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding='utf-8'
+    )
+
+
 settings = Settings()
+
+settings = Settings() 

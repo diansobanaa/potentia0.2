@@ -43,6 +43,39 @@ class RedisRateLimiter:
         self.redis = client
         self.redis_available = client is not None
 
+    def pipeline(self, transaction: bool = True):
+        """
+        Create a Redis pipeline context manager.
+        """
+        if not self.redis_available:
+            raise RuntimeError("Redis client is not available")
+        return self.redis.pipeline(transaction=transaction)
+
+    async def delete(self, *keys: str) -> int:
+        """
+        Delete one or more keys from Redis.
+        Returns the number of keys deleted.
+        """
+        if not self.redis_available:
+            return 0
+        try:
+            return await self.redis.delete(*keys)
+        except Exception as e:
+            logger.error(f"Error deleting keys from Redis: {e}", exc_info=True)
+            return 0
+
+    async def keys(self, pattern: str) -> List[str]:
+        """
+        Find all keys matching the given pattern.
+        """
+        if not self.redis_available:
+            return []
+        try:
+            return await self.redis.keys(pattern)
+        except Exception as e:
+            logger.error(f"Error getting keys from Redis: {e}", exc_info=True)
+            return []
+
     async def _is_allowed(self, key: str, limit: int, period_seconds: int) -> Tuple[bool, int]:
         """
         Logika inti rate limiting (algoritma sliding window log).
@@ -51,10 +84,10 @@ class RedisRateLimiter:
             return True, 0 # Gagal terbuka (fail-open) jika Redis mati
 
         try:
-            now = int(time.time() * 1000) # Waktu dalam milidetik
+            now = int(time.time() * 1000)  # Waktu dalam milidetik
             window_start = now - (period_seconds * 1000)
 
-            async with self.safe_pipeline(self.redis, transaction=False) as pipe:
+            async with self.redis.pipeline(transaction=False) as pipe:
             
                 # 1. Hapus log lama (di luar jendela waktu)
                 pipe.zremrangebyscore(key, 0, window_start)
@@ -117,7 +150,7 @@ class RedisRateLimiter:
             user_key = str(user_id)
             now = int(time.time())
 
-            async with self.safe_pipeline(self.redis, transaction=False) as pipe:
+            async with self.redis.pipeline(transaction=False) as pipe:
                 # HSET: user_id -> timestamp (untuk cleanup)
                 pipe.hset(key, user_key, str(now)) 
                 # EXPIRE: Set TTL untuk seluruh canvas (diperbarui setiap kali ada koneksi)

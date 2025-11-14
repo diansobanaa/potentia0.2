@@ -61,3 +61,12 @@ class AgentState(TypedDict, total=False):
     output_token_count: int
     cost_estimate: float
     api_call_count: int  # Make sure this exists
+    model_used: Optional[str]  # Track which LLM model was used
+    
+    # LLM Configuration (frontend-driven)
+    llm_model: Optional[str]  # Model name from frontend
+    llm_temperature: Optional[float]  # Temperature from frontend
+    llm_max_tokens: Optional[int]  # Max tokens from frontend
+    
+    # Fallback error tracking
+    llm_fallback_error: Optional[Dict[str, Any]]  # Track LLM fallback info

@@ -104,7 +104,7 @@ async def manage_context_window(state: AgentState, config: RunnableConfig) -> Di
     
     try:
         prompt = CONTEXT_PRUNING_PROMPT.format(messages_json=json.dumps(eval_json, indent=2))
-        llm = llm_flash_client.get_llm().with_structured_output(PruningResult)
+        llm = llm_flash_client.with_structured_output(PruningResult)
         result: PruningResult = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
         
         pruned_history: List[BaseMessage] = []
@@ -165,7 +165,7 @@ async def summarize_context(state: AgentState, config: RunnableConfig) -> Dict[s
         transcript = "\n".join([f"{msg.type}: {msg.content}" for msg in messages_to_summarize])
         prompt = CONTEXT_SUMMARIZATION_PROMPT.format(messages_to_summarize=transcript)
         
-        llm = llm_flash_client.get_llm()
+        llm = llm_flash_client
         result = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
         summary_text = result.content
         
@@ -217,7 +217,7 @@ async def prune_and_summarize_node(state: AgentState, config: RunnableConfig) ->
     with tracer.start_as_current_span("prune_and_summarize") as span:
         try:
             pruning_prompt = CONTEXT_PRUNING_PROMPT.format(messages_json=json.dumps(eval_json, indent=2))
-            pruning_llm = llm_flash_client.get_llm().with_structured_output(PruningResult)
+            pruning_llm = llm_flash_client.with_structured_output(PruningResult)
             pruning_result: PruningResult = await pruning_llm.ainvoke([HumanMessage(content=pruning_prompt)], config=config)
             
             messages_to_summarize: List[BaseMessage] = []
@@ -231,7 +231,7 @@ async def prune_and_summarize_node(state: AgentState, config: RunnableConfig) ->
                 transcript = "\n".join([f"{msg.type}: {msg.content}" for msg in messages_to_summarize])
                 summary_prompt = CONTEXT_SUMMARIZATION_PROMPT.format(messages_to_summarize=transcript)
                 
-                summary_llm = llm_flash_client.get_llm()
+                summary_llm = llm_flash_client
                 summary_result = await summary_llm.ainvoke([HumanMessage(content=summary_prompt)], config=config)
                 summary_text = summary_result.content
                 

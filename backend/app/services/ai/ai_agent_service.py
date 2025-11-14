@@ -1,16 +1,17 @@
 import logging
-from typing import Dict, Any, AsyncGenerator, List
+from typing import Dict, Any, AsyncGenerator, List, Optional  # <-- add Optional
 from pydantic import ValidationError
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_core.utils.function_calling import with_retry
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI  # <-- remove direct dependency
 
-from app.core.config import settings #
+from app.core.config import settings
 from app.models.ai import AICanvasToolSchema
-from app.models.block import BlockType #
+from app.models.block import BlockType
+from app.services.chat_engine.llm_provider import get_chat_model  # <-- use provider-agnostic factory
 
 logger = logging.getLogger(__name__)
 
@@ -34,31 +35,13 @@ def create_block(type: BlockType, content: str, properties: Optional[Dict[str, A
 class AIAgentService:
     """
     Mengelola LangChain Agent dan Tool Calling.
-    Ini adalah implementasi Fase 2.
+    Stateless untuk pemilihan model LLM (frontend-driven).
     """
     
     def __init__(self):
-        # 1. Inisialisasi Model (Gemini)
-        llm = ChatGoogleGenerativeAI(
-            model=settings.GEMINI_GENERATIVE_MODEL, #
-            temperature=0.1,
-            convert_system_message_to_human=True # Wajib untuk Gemini
-        )
-        
-        # 2. Terapkan Retry (Solusi W4)
-        # Jika API Gemini gagal, coba lagi 2x dengan backoff
-        llm_with_retry = with_retry(
-            llm,
-            stop_after_attempt=3,
-            wait_exponential_jitter=True,
-            reraise=True # Lemparkan error jika retry gagal
-        )
-        
-        # 3. Definisikan Tools
+        # Tools bersifat statis
         self.tools = [create_block]
-        
-        # 4. Buat Prompt
-        # (Prompt ini sangat penting untuk memaksa AI menggunakan tools)
+        # Prompt statis
         prompt_str = """
         Anda adalah asisten penulis AI yang membantu pengguna di dalam 
         canvas kolaboratif.
@@ -78,76 +61,79 @@ class AIAgentService:
         Alat yang tersedia:
         {agent_scratchpad}
         """
-        prompt_template = ChatPromptTemplate.from_template(prompt_str)
-        
-        # 5. Buat Agent
-        agent = create_tool_calling_agent(llm_with_retry, self.tools, prompt_template)
-        
-        # 6. Buat Agent Executor
-        self.agent_executor = AgentExecutor(
-            agent=agent, 
-            tools=self.tools, 
-            verbose=settings.DEBUG # Hanya verbose jika mode DEBUG
-        )
+        self.prompt_template = ChatPromptTemplate.from_template(prompt_str)
 
-    async def stream_agent_run(self, prompt: str) -> AsyncGenerator[Dict[str, Any], None]:
+    async def stream_agent_run(
+        self,
+        prompt: str,
+        llm_config: Optional[Dict[str, Any]] = None,
+        chat_history: Optional[List[Dict[str, Any]]] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Fungsi streaming utama (dipanggil oleh Fase 1).
-        Ini menghasilkan (yield) 3 tipe event: 'status', 'tool_output', 'error'.
+        Fungsi streaming utama.
+        - llm_config: {"model": "...", "temperature": 0.x, "max_tokens": N?}
+        - chat_history: daftar pesan (opsional)
         """
+        # Tentukan model/temperature per request (stateless)
+        model = (llm_config or {}).get("model", settings.DEFAULT_MODEL)
+        temperature = (llm_config or {}).get("temperature", settings.DEFAULT_TEMPERATURE)
+
         try:
-            # Gunakan astream_events untuk mendapatkan log penuh
-            async for event in self.agent_executor.astream_events(
-                {"input": prompt, "chat_history": []},
+            # Inisialisasi LLM per-call via factory (auto-detect provider dari nama model)
+            base_llm = get_chat_model(model=model, temperature=temperature)
+            llm_with_retry = with_retry(
+                base_llm,
+                stop_after_attempt=3,
+                wait_exponential_jitter=True,
+                reraise=True
+            )
+
+            # Buat agent & executor per-call (menghindari state lekat pada LLM)
+            agent = create_tool_calling_agent(llm_with_retry, self.tools, self.prompt_template)
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=self.tools,
+                verbose=settings.DEBUG
+            )
+
+            history = chat_history or []
+            logger.info(f"AI Agent run with model={model}, temp={temperature}")
+
+            async for event in agent_executor.astream_events(
+                {"input": prompt, "chat_history": history},
                 version="v1"
             ):
                 kind = event["event"]
-                
+
                 if kind == "on_llm_start":
                     yield {"type": "status", "data": "AI: Berpikir..."}
-                
+
                 elif kind == "on_tool_start":
-                    # Memberi feedback instan ke user
                     tool_name = event.get("name")
                     if tool_name == "create_block":
                         tool_input = event['data'].get('input', {})
                         block_type = tool_input.get('type', 'blok')
                         yield {"type": "status", "data": f"AI: Membuat {block_type}..."}
-                
+
                 elif kind == "on_tool_end":
-                    # Ini adalah 'happy path'
-                    # 'event['data']['input']' adalah dict yang dikirim ke tool
                     tool_input_dict = event['data'].get('input', {})
-                    
                     try:
-                        # (Solusi S1/W1) Validasi Pydantic
                         validated_block = AICanvasToolSchema.model_validate(tool_input_dict)
-                        # Kirim payload yang bersih dan tervalidasi
                         yield {
-                            "type": "tool_output", 
+                            "type": "tool_output",
                             "data": validated_block.model_dump()
                         }
                     except ValidationError as e:
                         logger.warning(f"Validasi Pydantic gagal: {e}")
-                        yield {
-                            "type": "error", 
-                            "data": f"AI Error: Model mengembalikan data tidak valid. {e}"
-                        }
-                
-                elif kind == "on_llm_error" or kind == "on_tool_error":
-                    # (Solusi W1/W4) Jika retry gagal
+                        yield {"type": "error", "data": f"AI Error: Model mengembalikan data tidak valid. {e}"}
+
+                elif kind in ("on_llm_error", "on_tool_error"):
                     logger.error(f"Agent error stream: {event['data']}")
-                    yield {
-                        "type": "error", 
-                        "data": f"AI Error: {event['data'].get('error', 'Gagal memproses.')}"
-                    }
+                    yield {"type": "error", "data": f"AI Error: {event['data'].get('error', 'Gagal memproses.')}"}
 
         except Exception as e:
             logger.error(f"Error kritis di stream_agent_run: {e}", exc_info=True)
-            yield {
-                "type": "error", 
-                "data": f"Error Sistem: {e}"
-            }
+            yield {"type": "error", "data": f"Error Sistem: {e}"}
 
 # --- Instance Singleton ---
 # Kita buat satu instance untuk digunakan di seluruh aplikasi

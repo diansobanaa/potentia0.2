@@ -7,6 +7,7 @@ from uuid import UUID
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from tenacity import retry, stop_after_attempt, wait_exponential
+from opentelemetry import trace
 
 from app.services.chat_engine.agent_state import AgentState
 from app.services.chat_engine.llm_client import llm_flash_client
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from app.services.embedding_service import GeminiEmbeddingService
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 # Lazy initialization - avoid circular import
 _rag_embedding_service = None
@@ -59,7 +61,7 @@ async def query_transform(state: AgentState, config: RunnableConfig) -> Dict[str
         )
         input_tokens = _count_tokens(prompt)
         
-        llm = llm_flash_client.get_llm().with_structured_output(RagQueryTransform)
+        llm = llm_flash_client.with_structured_output(RagQueryTransform)
         result: RagQueryTransform = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
         
         output_tokens = _count_tokens(result.model_dump_json())
@@ -69,7 +71,7 @@ async def query_transform(state: AgentState, config: RunnableConfig) -> Dict[str
         logger.debug(f"REQUEST_ID: {request_id} - RAG query: {result.rag_query[:100]}...")
         
         return {
-            "transformed_query": result.content,
+            "transformed_query": result.rag_query,
             "cost_estimate": cost,
             "output_token_count": state.get("output_token_count", 0) + output_tokens,
             "input_token_count": state.get("input_token_count", 0) + input_tokens,
@@ -101,7 +103,7 @@ async def retrieve_context(state: AgentState, config: RunnableConfig) -> Dict[st
         )
         input_tokens = _count_tokens(prompt)
         
-        llm = llm_flash_client.get_llm().with_structured_output(RagQueryTransform)
+        llm = llm_flash_client.with_structured_output(RagQueryTransform)
         result: RagQueryTransform = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
         
         output_tokens = _count_tokens(result.model_dump_json())
@@ -110,7 +112,7 @@ async def retrieve_context(state: AgentState, config: RunnableConfig) -> Dict[st
         logger.info(f"REQUEST_ID: {request_id} - Query transformed")
         
         return {
-            "transformed_query": result.content,
+            "transformed_query": result.rag_query,
             "cost_estimate": cost,
             "output_token_count": state.get("output_token_count", 0) + output_tokens,
             "input_token_count": state.get("input_token_count", 0) + input_tokens,
@@ -135,7 +137,7 @@ async def retrieve_context(state: AgentState, config: RunnableConfig) -> Dict[st
         )
         input_tokens = _count_tokens(prompt)
         
-        llm = llm_flash_client.get_llm().with_structured_output(RagQueryTransform)
+        llm = llm_flash_client.with_structured_output(RagQueryTransform)
         result: RagQueryTransform = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
         
         output_tokens = _count_tokens(result.model_dump_json())
@@ -144,7 +146,7 @@ async def retrieve_context(state: AgentState, config: RunnableConfig) -> Dict[st
         logger.info(f"REQUEST_ID: {request_id} - Query transformed")
         
         return {
-            "transformed_query": result.content,
+            "transformed_query": result.rag_query,
             "cost_estimate": cost,
             "output_token_count": state.get("output_token_count", 0) + output_tokens,
             "input_token_count": state.get("input_token_count", 0) + input_tokens,
@@ -184,7 +186,7 @@ async def rerank_context(state: AgentState, config: RunnableConfig) -> Dict[str,
             )
             input_tokens = _count_tokens(prompt)
             
-            llm = llm_flash_client.get_llm().with_structured_output(RerankedDocuments)
+            llm = llm_flash_client.with_structured_output(RerankedDocuments)
             result: RerankedDocuments = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
             
             output_tokens = _count_tokens(result.model_dump_json())
@@ -235,8 +237,7 @@ async def context_compression(state: AgentState, config: RunnableConfig) -> Dict
             )
             input_tokens = _count_tokens(prompt)
             
-            llm = llm_flash_client.get_llm()
-            result = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
+            result = await llm_flash_client.ainvoke([HumanMessage(content=prompt)], config=config)
             compressed_context = result.content if result.content else ""
             
             output_tokens = _count_tokens(compressed_context)

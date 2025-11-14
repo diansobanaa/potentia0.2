@@ -19,7 +19,7 @@ from app.services.chat_engine.agent_state import AgentState
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
 
-# === Metrik Prometheus (Observability) ===
+# Metrik Prometheus
 LLM_CALLS_TOTAL = Counter(
     "llm_calls_total",
     "Total number of LLM calls",
@@ -157,13 +157,32 @@ class LLMClient:
                 raise
 
 
-# --- Inisialisasi Klien Global ---
-llm_flash_client = LLMClient(
-    model_name=settings.GEMINI_RERANKER_MODEL, 
-    temperature=0.0
-)
+class LLMClientManager:
+    """Manages LLM clients for internal backend use."""
+    
+    def __init__(self):
+        # Flash client
+        self.llm_flash = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_RERANKER_MODEL,  # ← UBAH BARIS INI SAJA
+            temperature=0.0,
+            google_api_key=settings.GEMINI_API_KEY,
+        )
+        
+        # Pro client
+        self.llm_pro = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_ASESOR_MODEL,  # ← UBAH BARIS INI SAJA
+            temperature=0.2,
+            google_api_key=settings.GEMINI_API_KEY,
+        )
+    
+    def get_flash_client(self):  # ← Method ini TETAP ADA
+        return self.llm_flash
+    
+    def get_pro_client(self):  # ← Method ini TETAP ADA
+        return self.llm_pro
 
-llm_pro_client = LLMClient(
-    model_name=settings.GEMINI_GENERATIVE_MODEL, 
-    temperature=0.2
-)
+
+# Inisialisasi global (TETAP ADA)
+llm_client_manager = LLMClientManager()
+llm_flash_client = llm_client_manager.llm_flash
+llm_pro_client = llm_client_manager.llm_pro

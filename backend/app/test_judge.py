@@ -37,7 +37,7 @@ def initialize_settings():
     global JUDGE_CHAIN_INSTANCE
     settings.GEMINI_API_KEY = settings.GEMINI_API_KEY or "DUMMY_API_KEY_FOR_TESTING"
     settings.GEMINI_RERANKER_MODEL = settings.GEMINI_RERANKER_MODEL or "gemini-2.5-flash"
-    settings.GEMINI_GENERATIVE_MODEL = settings.GEMINI_GENERATIVE_MODEL or "gemini-2.5-pro"
+    settings.DEFAULT_MODEL = settings.DEFAULT_MODEL or "gemini-2.5-pro"
 
     if JUDGE_CHAIN_INSTANCE is None:
         JUDGE_CHAIN_INSTANCE = get_judge_chain()

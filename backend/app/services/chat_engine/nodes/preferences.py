@@ -51,7 +51,7 @@ async def extract_preferences_node(state: AgentState, config: RunnableConfig) ->
             )
             input_tokens = _count_tokens(prompt)
             
-            llm = llm_flash_client.get_llm().with_structured_output(ExtractedPreference)
+            llm = llm_flash_client.with_structured_output(ExtractedPreference)
             result: ExtractedPreference = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
             
             output_tokens = _count_tokens(result.model_dump_json())

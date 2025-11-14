@@ -7,23 +7,29 @@ httpx[http2]
 python-jose[cryptography]
 apscheduler
 aiosmtplib
-langgraph-checkpoint-redis  # Ini yang benar untuk Redis integration di LangGraph
+langgraph-checkpoint-redis
 redis>=5.2.1
 redisvl>=0.11.0
 email-validator
+
 # --- Dependensi LangChain & AI ---
 langchain
 langchain-core
 grpcio
-langchain-google-genai>=1.0.0
-google-generativeai>=0.5.0
 tiktoken>=0.7.0
+
+# LLM Providers
+langchain-google-genai>=2.0.0  # Gemini
+google-generativeai>=0.5.0
+langchain-openai>=0.2.0        # OpenAI & OpenAI-compatible (DeepSeek, Kimi)
+
 # --- Dependensi LangGraph v3.0 ---
 langgraph
 tenacity
 tavily-python
 langchain-community
-# ... (Sisa dependensi)
+
+# ...existing code...
 python-dateutil
 pytz
 websockets

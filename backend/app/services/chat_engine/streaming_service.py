@@ -3,7 +3,7 @@ SSE streaming service for LangGraph agent events.
 """
 import json
 import logging
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Optional
 from uuid import UUID
 from datetime import datetime
 import time
@@ -34,7 +34,8 @@ class StreamingService:
         permissions: List[str],
         auth_info,
         embedding_service,
-        background_tasks
+        background_tasks,
+        llm_config: Optional[dict] = None
     ) -> AsyncGenerator[str, None]:
         """
         Stream LangGraph agent events as Server-Sent Events (SSE).
@@ -50,6 +51,7 @@ class StreamingService:
             auth_info: Authentication info dict
             embedding_service: Embedding service instance
             background_tasks: FastAPI BackgroundTasks
+            llm_config: Optional LLM configuration overrides
             
         Yields:
             str: JSON-formatted SSE events
@@ -86,6 +88,9 @@ class StreamingService:
                     "request_id": request_id
                 }
             }) + "\n"
+            
+            # Track if we've sent errorStatus
+            error_status_sent = False
 
             # Build initial agent state
             initial_state = AgentState(
@@ -103,7 +108,39 @@ class StreamingService:
                 api_call_count=0  # Initialize to 0
             )
 
-            # Build config
+            # Extract LLM config (frontend-driven)
+            if llm_config:
+                model = llm_config.get("model")
+                temperature = llm_config.get(
+                    "temperature",
+                    settings.DEFAULT_TEMPERATURE
+                )
+                max_tokens = llm_config.get("max_tokens")
+                logger.info(
+                    f"✅ StreamingService extracted llm_config: "
+                    f"model={model}, temp={temperature}, "
+                    f"max_tokens={max_tokens}"
+                )
+            else:
+                model = settings.DEFAULT_MODEL
+                temperature = settings.DEFAULT_TEMPERATURE
+                max_tokens = None
+                logger.warning(
+                    f"⚠️  StreamingService: No llm_config provided, "
+                    f"using defaults: model={model}, temp={temperature}"
+                )
+
+            logger.info(
+                f"🔧 Creating RunnableConfig with model={model}, "
+                f"temp={temperature}"
+            )
+
+            # Update initial_state with model info (CRITICAL: Pass via state!)
+            initial_state["model_used"] = model
+            initial_state["llm_model"] = model
+            initial_state["llm_temperature"] = temperature
+            initial_state["llm_max_tokens"] = max_tokens
+
             config = RunnableConfig(
                 configurable={
                     "thread_id": conversation_id,
@@ -111,9 +148,31 @@ class StreamingService:
                         "auth_info": auth_info,
                         "embedding_service": embedding_service,
                         "background_tasks": background_tasks
-                    }
+                    },
+                    "llm": {
+                        "model": model,
+                        "temperature": temperature,
+                        "max_tokens": max_tokens
+                    },
                 }
             )
+            
+            # Verify config structure (safe access)
+            logger.debug(
+                f"🔍 Created RunnableConfig, type: {type(config)}"
+            )
+            if isinstance(config, dict):
+                logger.debug(
+                    f"🔍 Config is dict with keys: "
+                    f"{list(config.get('configurable', {}).keys())}"
+                )
+            elif hasattr(config, 'configurable'):
+                logger.debug(
+                    f"🔍 Config.configurable keys: "
+                    f"{list(config.configurable.keys())}"
+                )
+            
+            logger.info(f"🤖 Model: {model} (temp={temperature})")
 
             # Helper: robustly extract messages contents from event data
             def _extract_messages_contents(data: dict) -> List[str]:
@@ -201,6 +260,30 @@ class StreamingService:
                 if kind == "on_chain_start":
                     node_name = event["name"]
                     current_node = node_name
+                    
+                    # Check for fallback error and send errorStatus before first status
+                    if not error_status_sent and node_name == "agent_node":
+                        # Check if there's a fallback error in initial_state
+                        fallback_err = initial_state.get("llm_fallback_error")
+                        if fallback_err:
+                            error_str = fallback_err.get("error", "")
+                            original_model = fallback_err.get("original_model", "")
+                            
+                            # Determine error message
+                            if "429" in error_str or "quota" in error_str.lower():
+                                if "suspended" in error_str.lower():
+                                    msg = f"⚠️ Model '{original_model}' suspended. Akun billing habis. Menggunakan fallback model."
+                                else:
+                                    msg = f"⚠️ Model '{original_model}' rate limit/quota habis. Menggunakan fallback model."
+                            elif "401" in error_str or "unauthorized" in error_str.lower():
+                                msg = f"⚠️ Model '{original_model}' autentikasi gagal. Menggunakan fallback model."
+                            else:
+                                msg = f"⚠️ Model '{original_model}' error: {error_str[:100]}. Menggunakan fallback model."
+                            
+                            yield json.dumps({"type": "errorStatus", "payload": msg}) + "\n"
+                            error_status_sent = True
+                            logger.info(f"REQUEST_ID: {request_id} - Sent errorStatus to user")
+                    
                     status_messages = {
                         "classify_intent": "Menganalisis niat...",
                         "query_transform": "Memperjelas kueri...",
@@ -218,6 +301,8 @@ class StreamingService:
                         chunk = event["data"]["chunk"]
                         if isinstance(chunk, AIMessageChunk) and chunk.content:
                             token = chunk.content
+                            
+                            # Stream all content as token_chunk (including thinkingDiv)
                             final_ai_response_chunks.append(token)
                             try:
                                 total_output_tokens_stream += TokenCounter.count_tokens(token)
@@ -256,12 +341,46 @@ class StreamingService:
                     # Capture final state from graph
                     if output_data and isinstance(output_data, dict):
                         final_state = output_data
+                        
+                        # Check for fallback error in final state (in case not caught earlier)
+                        if not error_status_sent and node_name == "agent_node":
+                            fallback_err = output_data.get("llm_fallback_error")
+                            if fallback_err:
+                                error_str = fallback_err.get("error", "")
+                                original_model = fallback_err.get("original_model", "")
+                                
+                                if "429" in error_str or "quota" in error_str.lower():
+                                    if "suspended" in error_str.lower():
+                                        msg = f"⚠️ Model '{original_model}' suspended. Akun billing habis. Menggunakan fallback model."
+                                    else:
+                                        msg = f"⚠️ Model '{original_model}' rate limit/quota habis. Menggunakan fallback model."
+                                elif "401" in error_str or "unauthorized" in error_str.lower():
+                                    msg = f"⚠️ Model '{original_model}' autentikasi gagal. Menggunakan fallback model."
+                                else:
+                                    msg = f"⚠️ Model '{original_model}' error. Menggunakan fallback model."
+                                
+                                yield json.dumps({"type": "errorStatus", "payload": msg}) + "\n"
+                                error_status_sent = True
+                                logger.info(f"REQUEST_ID: {request_id} - Sent errorStatus to user (on_chain_end)")
+            
+            # No need to send final_response separately since fallback will stream normally
             
             # Calculate metrics
-            input_total = (final_state or {}).get("input_token_count") or total_input_tokens_stream
-            output_total = (final_state or {}).get("output_token_count") or total_output_tokens_stream
-            api_calls = (final_state or {}).get("api_call_count", 0)  # NEW
-            model_used = model_used_stream or settings.GEMINI_GENERATIVE_MODEL
+            input_total = (
+                (final_state or {}).get("input_token_count") or
+                total_input_tokens_stream
+            )
+            output_total = (
+                (final_state or {}).get("output_token_count") or
+                total_output_tokens_stream
+            )
+            api_calls = (final_state or {}).get("api_call_count", 0)
+            # Use model_used from state (includes attempted model on error)
+            model_used = (
+                (final_state or {}).get("model_used") or
+                model_used_stream or
+                settings.DEFAULT_MODEL
+            )
             
             # Calculate cost
             pricing = {
