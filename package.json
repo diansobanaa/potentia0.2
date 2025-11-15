@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "axios": "^1.13.2",
+    "event-source-polyfill": "^1.0.31",
+    "expo-secure-store": "^15.0.7",
+    "react-native-url-polyfill": "^3.0.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
+  }
+}

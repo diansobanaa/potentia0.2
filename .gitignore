@@ -42,3 +42,16 @@ pip-log.txt
 # Large or generated (optional)
 node_modules/
 *.pyc
+
+# Frontend (Expo/React Native) generated artifacts (duplicated for safety)
+frontend/node_modules/
+frontend/.expo/
+frontend/dist/
+frontend/web-build/
+frontend/*.tsbuildinfo
+
+# Optional: ignore unused experimental compose file (uncomment if you do not want it committed)
+# backend/docker-compose(tidakdipakai).yml
+
+# Expo environment type declarations (can be regenerated)
+frontend/expo-env.d.ts

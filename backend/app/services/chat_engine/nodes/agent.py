@@ -138,9 +138,12 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any
                 error_str = str(stream_error)
                 is_api_error = (
                     "429" in error_str or
+                    "503" in error_str or
                     "quota" in error_str.lower() or
                     "rate limit" in error_str.lower() or
                     "suspended" in error_str.lower() or
+                    "overloaded" in error_str.lower() or
+                    "unavailable" in error_str.lower() or
                     "401" in error_str.lower() or
                     "unauthorized" in error_str.lower()
                 )

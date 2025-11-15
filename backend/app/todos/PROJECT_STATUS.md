@@ -233,6 +233,8 @@ Seluruh *codebase* *backend* telah berhasil dimigrasi dari arsitektur *sync-over
 * **Cache (Redis):** *Library* Redis telah dimigrasi ke `redis.asyncio`. Semua operasi *cache* (termasuk *locking* di *jobs* dan *query* di `FreeBusyService`) sekarang sepenuhnya *non-blocking*.
 * **Embedding (Google):** Layanan *embedding* telah di-refaktor untuk menggunakan `genai.embed_content_async`, menghilangkan *bottleneck* I/O terakhir.
 
+
+
 ### 4. Keamanan & Stabilitas (Selesai)
 
 * **Perbaikan Bug Kritis:** Kita telah berhasil men-debug dan memperbaiki serangkaian *error* pasca-refaktor, termasuk `AttributeError` (`.select`, `.single`), `ImportError` (`get_supabase_client`), dan `RuntimeWarning` (`was never awaited`), yang menghasilkan *stack* aplikasi yang stabil.
@@ -304,3 +306,83 @@ Sistem ini sekarang siap untuk dipantau di lingkungan produksi.
 | **Mikro** | **M2:** `GET /ready` | Readiness probe (DB & Redis terhubung). | ✅ **Selesai** |
 | **Mikro** | **M3:** `POST /debug/echo` | Endpoint debug. | ✅ **Selesai** |
 | **Mikro** | **S1:** `GET /metrics` | Endpoint Prometheus (sekarang akurat). | ✅ **Selesai** |
+
+
+---
+
+## 📊 Status Fitur (Update per 14 November 2025)
+
+Implementasi **Sistem Chat AI Multi-Provider dengan Thinking Process & Error Handling** telah diselesaikan. Arsitektur LangGraph kini mendukung pemilihan model dinamis dari frontend, fallback otomatis antar provider, dan visibilitas proses berpikir AI secara real-time.
+
+### 1. Multi-Provider LLM dengan Fallback Otomatis (Selesai)
+
+Sistem chat kini mendukung 5 provider LLM dengan mekanisme fallback yang transparan kepada pengguna.
+
+* **Provider yang Didukung**: Gemini (default fallback), OpenAI, DeepSeek, Kimi/Moonshot, XAI (Grok).
+* **Auto-Detection**: File baru `llm_provider.py` memetakan model name ke provider secara otomatis (misalnya: `moonshot-v1-32k` → `kimi`, `gpt-4o-mini` → `openai`).
+* **Fallback dengan Notifikasi**: Jika model utama gagal, sistem secara otomatis fallback ke Gemini **dan mengirim event `errorStatus` via SSE** ke frontend dengan pesan user-friendly.
+* **Error Detection Coverage** (Updated 14 Nov 2025): Error handling di `agent.py` kini mendeteksi lebih banyak kondisi:
+  - `429` - Rate limit exceeded
+  - `503` - Service unavailable / model overloaded (**BARU** - fix untuk Google Gemini overload)
+  - `quota exceeded` - Billing limit tercapai
+  - `suspended` - Account suspended
+  - `overloaded` - Model overloaded (**BARU**)
+  - `unavailable` - Service unavailable (**BARU**)
+  - `401` - Unauthorized / invalid API key
+* **Error Tracking**: State `llm_fallback_error` ditambahkan ke `AgentState` untuk melacak metadata error (model asli, provider, alasan error).
+
+**File yang Diubah**: `llm_provider.py` (baru), `agent.py`, `agent_state.py`, `streaming_service.py`.
+
+**⚠️ PERUBAHAN BREAKING**: Arsitektur lama menggunakan `llm_client.py` dengan hardcoded single provider. Sistem sekarang menggunakan factory pattern di `llm_provider.get_chat_model()` yang menerima parameter `model` dari frontend. Frontend **WAJIB** mengirim field `llm_model` di request body.
+
+### 2. Thinking Process yang Terlihat (v3.8.0 - Selesai)
+
+AI kini menampilkan proses berpikir strategisnya secara eksplisit sebelum memberikan jawaban akhir, meningkatkan transparansi dan kualitas respons.
+
+* **Format Thinking**: Menggunakan wrapper `<thinkingDiv>` dengan markdown bold untuk judul setiap langkah berpikir (misalnya: `**Analisis Kueri**`, `**Strategi Jawaban**`).
+* **Chain of Thought (CoT)**: Prompt agent (`AGENT_SYSTEM_PROMPT`) telah di-upgrade dengan metodologi CoT dari `developer_prompt.py`, memaksa AI untuk merencanakan strategi sebelum eksekusi.
+* **Streaming Real-Time**: Thinking process di-stream sebagai `token_chunk` biasa via SSE. Tidak ada parsing khusus di backend; frontend bertanggung jawab untuk mendeteksi dan styling `<thinkingDiv>`.
+* **Enforcement Eksekusi**: Instruksi baru di prompt memastikan AI mengeksekusi **SEMUA** poin yang disebutkan di thinking block (mengatasi masalah AI berhenti mid-answer).
+
+**File yang Diubah**: `agent_prompts.py` (v3.8.0), `streaming_service.py` (simplified - removed thinking buffer parsing).
+
+**⚠️ PERUBAHAN BREAKING**: Versi sebelumnya (v3.5.x - v3.7.x) menggunakan format JSON (`{"type": "thinking"}`) dan XML parsing (`<thinking>`, `<thinking_block>`) di backend dengan buffer accumulator. Arsitektur ini **TIDAK BERLAKU LAGI**. System sekarang menggunakan pendekatan pass-through sederhana; semua content di-stream langsung sebagai `token_chunk`.
+
+### 3. Error Notification System (Selesai)
+
+Pengguna kini menerima notifikasi eksplisit via UI ketika terjadi masalah dengan provider LLM (billing limit, rate limit, service overload, API key invalid).
+
+* **Event SSE Baru**: `errorStatus` event dengan payload berisi pesan user-friendly (misalnya: "Model Kimi mencapai limit billing. Beralih ke Gemini sebagai fallback.").
+* **Deteksi Error Runtime** (Updated 14 Nov 2025): `agent.py` mendeteksi berbagai jenis error dari API call:
+  - 429 (rate limit)
+  - 503 (service unavailable/overloaded) (**BARU**)
+  - Quota exceeded
+  - Suspended accounts
+  - Overloaded models (**BARU**)
+  - 401 (unauthorized)
+* **Timing**: `errorStatus` dikirim **sebelum** `status` event pertama, memastikan user aware sejak awal jika ada fallback.
+
+**File yang Diubah**: `streaming_service.py`, `agent.py`.
+
+### 4. Bug Fixes & Stabilisasi (Selesai)
+
+* **Fix 503 Service Unavailable** (14 Nov 2025): Error `503 The model is overloaded` dari Google Gemini kini ditangani dengan proper fallback. Sebelumnya hanya mendeteksi 429/quota/401, sekarang juga mendeteksi 503/overloaded/unavailable.
+* **Fix AttributeError di RAG**: Node RAG (`query_transform`, `retrieve_context`, `rerank`) yang mengalami `AttributeError: 'RagQueryTransform' object has no attribute 'content'` telah diperbaiki. Kode kini dengan benar menggunakan `result.rag_query` sesuai schema Pydantic.
+* **Fix .env Security**: File `backend/.env` yang sempat ter-commit (memicu GitHub push protection) telah dihapus dari history. `.gitignore` telah diperbaiki untuk memastikan `.env` tidak ter-commit lagi.
+* **LangGraph Structured Output**: Semua node yang menggunakan `with_structured_output()` (intent classification, RAG transform, reranking) kini stabil dengan Pydantic v2 models.
+
+**File yang Diubah**: `agent.py`, `rag.py`, `.gitignore`.
+
+### 5. Arsitektur Prompt (v3.8.0 - Current)
+
+* **Evolusi Format**: JSON → XML tags (`<thinking>`) → XML buffer parser → Single `<thinkingDiv>` → Markdown bold inside `<thinkingDiv>` (final).
+* **Instruksi Eksekusi**: Section baru "## ⚠️ INSTRUKSI EKSEKUSI (WAJIB)" memaksa AI untuk:
+  1. Eksekusi setiap poin di thinking secara lengkap
+  2. Tidak berhenti mid-answer
+  3. Verify jawaban mencerminkan semua strategi yang direncanakan
+  4. Checkpoint sebelum selesai untuk memastikan coverage penuh
+* **Concise Planning**: Thinking dibuat ringkas (2-3 kalimat per bagian) untuk menghemat token dan menyisakan budget untuk jawaban komprehensif.
+
+**File yang Diubah**: `agent_prompts.py`.
+
+**Konfigurasi**: `AGENT_PROMPT_VERSION = "v3.8.0"`.
