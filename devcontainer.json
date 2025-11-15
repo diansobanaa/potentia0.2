@@ -4,7 +4,7 @@
   "dockerComposeFile": "../docker-compose.yml",
 
   // GANTI "app" dengan nama service utama Anda di file docker-compose.yml
-  "service": "app", 
+  "service": "backend-1", 
 
   // GANTI "/app" dengan path folder kerja di dalam container Anda
   "workspaceFolder": "/app",

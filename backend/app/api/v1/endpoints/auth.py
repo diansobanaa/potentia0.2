@@ -10,6 +10,8 @@ from app.core.dependencies import (
 from app.services.user.user_service import UserService
 from app.core.exceptions import DatabaseError, NotFoundError 
 import logging # <-- Tambahkan
+import httpx
+from app.core.config import settings
 
 router = APIRouter(
     prefix="/auth",
@@ -116,6 +118,9 @@ async def refresh_access_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Failed to refresh token"
         )
+    except HTTPException as e:
+        # Re-raise HTTPException to preserve the intended status code
+        raise e
     except Exception as e:
         logger.error(f"Unexpected error during token refresh: {e}")
         raise HTTPException(

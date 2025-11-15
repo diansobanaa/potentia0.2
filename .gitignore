@@ -50,6 +50,9 @@ frontend/dist/
 frontend/web-build/
 frontend/*.tsbuildinfo
 
+# Expo cache at root (created when running from root by mistake)
+.expo/
+
 # Optional: ignore unused experimental compose file (uncomment if you do not want it committed)
 # backend/docker-compose(tidakdipakai).yml
 
