@@ -1,12 +1,12 @@
 // Lokasi: app/(auth)/signup.tsx
 
 import React, { useState } from "react";
-import { View, Text, SafeAreaView, ScrollView } from "react-native";
+import { View, Text, SafeAreaView, ScrollView, StyleSheet } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useForm, Controller } from "react-hook-form"; // <-- Impor Hook Form
-import { zodResolver } from "@hookform/resolvers/zod"; // <-- Impor Resolver
-import { signupSchema, SignUpFormFields } from "@/src/features/auth/validation"; // <-- Impor Skema
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { signupSchema, SignUpFormFields } from "@/src/features/auth/validation";
 
 import { Input } from "@/src/shared/ui/Input";
 import { Button } from "@/src/shared/ui/Button";
@@ -60,33 +60,32 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    <SafeAreaView style={styles.container}>
       <ScrollView
-        className="flex-1"
-        contentContainerClassName="flex-grow justify-center p-6"
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
       >
-        {/* (Logo X & Judul... tetap sama) */}
-        <View className="items-center mb-8">
-          <Text className="text-white text-5xl font-extrabold">X</Text>
+        <View style={styles.logoContainer}>
+          <Text style={styles.logo}>X</Text>
         </View>
-        <View className="w-full max-w-md mx-auto space-y-6">
-          <Text className="text-white text-4xl font-bold">
+        <View style={styles.formContainer}>
+          <Text style={styles.title}>
             Happening now
           </Text>
-          <Text className="text-white text-3xl font-bold mb-4">
+          <Text style={styles.subtitle}>
             Join today.
           </Text>
 
-          {/* (Tombol Sosial & Divider... tetap sama) */}
           <SocialButton icon="google" text="Sign up with Google" onPress={handleGoogleSignUp} />
+          <View style={styles.spacing} />
           <SocialButton icon="apple" text="Sign up with Apple" onPress={handleAppleSignUp} />
-          <View className="flex-row items-center my-2">
-            <View className="flex-1 h-px bg-neutral-700" />
-            <Text className="text-neutral-400 px-4">or</Text>
-            <View className="flex-1 h-px bg-neutral-700" />
+          
+          <View style={styles.dividerContainer}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
           </View>
 
-          {/* --- Form Input (Direfaktor dengan Controller) --- */}
           <Controller
             control={control}
             name="email"
@@ -98,10 +97,11 @@ export default function SignUpScreen() {
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value}
-                error={errors.email?.message} // Tampilkan error validasi
+                error={errors.email?.message}
               />
             )}
           />
+          <View style={styles.spacing} />
           <Controller
             control={control}
             name="password"
@@ -112,29 +112,29 @@ export default function SignUpScreen() {
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value}
-                error={errors.password?.message} // Tampilkan error validasi
+                error={errors.password?.message}
               />
             )}
           />
 
+          <View style={styles.spacing} />
           <Button
             title={isSubmitting ? "Creating..." : "Create account"}
             variant="primary"
-            onPress={handleSubmit(onSubmit)} // Bungkus onSubmit dengan handleSubmit
+            onPress={handleSubmit(onSubmit)}
             disabled={isSubmitting}
           />
-          {/* --- Akhir Refaktor Form --- */}
           
           {apiMessage && (
-            <Text className="text-center text-white">{apiMessage}</Text>
+            <Text style={styles.messageText}>{apiMessage}</Text>
           )}
 
-          {/* (Teks Legal & Link Sign In... tetap sama) */}
-          <Text className="text-neutral-500 text-xs text-center">
+          <Text style={styles.legalText}>
             By signing up, you agree to the...
           </Text>
-          <View className="w-full max-w-md mx-auto space-y-4 mt-10">
-            <Text className="text-white text-xl font-bold">
+          
+          <View style={styles.signinContainer}>
+            <Text style={styles.signinTitle}>
               Already have an account?
             </Text>
             <Button
@@ -149,3 +149,83 @@ export default function SignUpScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logo: {
+    color: '#ffffff',
+    fontSize: 48,
+    fontWeight: '800',
+  },
+  formContainer: {
+    width: '100%',
+    maxWidth: 448,
+    marginHorizontal: 'auto',
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 36,
+    fontWeight: 'bold',
+  },
+  subtitle: {
+    color: '#ffffff',
+    fontSize: 30,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  spacing: {
+    height: 16,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#404040',
+  },
+  dividerText: {
+    color: '#a3a3a3',
+    paddingHorizontal: 16,
+  },
+  messageText: {
+    textAlign: 'center',
+    color: '#ffffff',
+    marginTop: 16,
+  },
+  legalText: {
+    color: '#737373',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 16,
+  },
+  signinContainer: {
+    width: '100%',
+    maxWidth: 448,
+    marginHorizontal: 'auto',
+    marginTop: 40,
+    gap: 16,
+  },
+  signinTitle: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+});

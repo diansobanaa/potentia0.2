@@ -1,72 +1,74 @@
- 
 // Lokasi: src/shared/ui/Button.tsx
 
-import { TouchableOpacity, Text, TouchableOpacityProps } from "react-native";
-import { cva, type VariantProps } from "class-variance-authority";
+import { TouchableOpacity, Text, TouchableOpacityProps, StyleSheet } from "react-native";
 
-// --- CVA (Class Variance Authority) ---
-// Ini adalah best practice untuk membuat varian tombol dengan NativeWind
-
-const buttonVariants = cva(
-  "w-full justify-center items-center rounded-full py-4", // Style dasar
-  {
-    variants: {
-      variant: {
-        // Tombol putih (seperti "Next")
-        primary: "bg-white active:bg-neutral-200",
-        // Tombol border putih (seperti "Forgot password?")
-        outline: "bg-transparent border border-neutral-700 active:bg-neutral-800",
-      },
-      disabled: {
-        true: "bg-neutral-700",
-      },
-    },
-    defaultVariants: {
-      variant: "primary",
-    },
-  }
-);
-
-const textVariants = cva("text-lg font-bold", { // Style teks dasar
-  variants: {
-    variant: {
-      primary: "text-black", // Teks hitam untuk tombol putih
-      outline: "text-white", // Teks putih untuk tombol outline
-    },
-    disabled: {
-      true: "text-neutral-400",
-    },
-  },
-  defaultVariants: {
-    variant: "primary",
-  },
-});
-
-// Definisikan props
-export interface ButtonProps
-  extends TouchableOpacityProps,
-    VariantProps<typeof buttonVariants> {
+export interface ButtonProps extends TouchableOpacityProps {
   title: string;
+  variant?: "primary" | "outline";
 }
 
 export function Button({
-  className,
-  variant,
+  variant = "primary",
   title,
   disabled,
+  style,
   ...props
 }: ButtonProps) {
-  const isDisabled = disabled || false;
-  
+  const buttonStyle = [
+    styles.base,
+    variant === "primary" ? styles.primary : styles.outline,
+    disabled && styles.disabled,
+    style,
+  ];
+
+  const textStyle = [
+    styles.text,
+    variant === "primary" ? styles.textPrimary : styles.textOutline,
+    disabled && styles.textDisabled,
+  ];
+
   return (
     <TouchableOpacity
-      className={buttonVariants({ variant, disabled: isDisabled, className })}
-      disabled={isDisabled}
+      style={buttonStyle}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <Text className={textVariants({ variant, disabled: isDisabled })}>
-        {title}
-      </Text>
+      <Text style={textStyle}>{title}</Text>
     </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  base: {
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 9999,
+    paddingVertical: 16,
+  },
+  primary: {
+    backgroundColor: '#ffffff',
+  },
+  outline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#404040',
+  },
+  disabled: {
+    backgroundColor: '#404040',
+  },
+  text: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  textPrimary: {
+    color: '#000000',
+  },
+  textOutline: {
+    color: '#ffffff',
+  },
+  textDisabled: {
+    color: '#a3a3a3',
+  },
+});
