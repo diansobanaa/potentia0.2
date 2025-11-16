@@ -1,7 +1,7 @@
 // Lokasi: src/features/dashboard/ui/HomeTopTabs.tsx
 
 import React from "react";
-import { View, Text, TouchableOpacity, Dimensions } from "react-native";
+import { View, Text, TouchableOpacity, Dimensions, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
   interpolate,
@@ -36,8 +36,8 @@ export function HomeTopTabs({ scrollX, onTabPress }: HomeTopTabsProps) {
   });
 
   return (
-    <View className="bg-black border-b border-neutral-800">
-      <View className="flex-row">
+    <View style={styles.container}>
+      <View style={styles.row}>
         {TABS.map((tab, index) => {
           // Style animasi untuk teks (transisi opacity)
           const textAnimatedStyle = useAnimatedStyle(() => {
@@ -58,12 +58,10 @@ export function HomeTopTabs({ scrollX, onTabPress }: HomeTopTabsProps) {
             <TouchableOpacity
               key={tab}
               onPress={() => onTabPress(index)}
-              className="flex-1 items-center justify-center py-4"
+              style={styles.tabButton}
             >
               <Animated.View style={textAnimatedStyle}>
-                <Text className="text-white text-base font-bold">
-                  {tab}
-                </Text>
+                <Text style={styles.tabText}>{tab}</Text>
               </Animated.View>
             </TouchableOpacity>
           );
@@ -72,9 +70,25 @@ export function HomeTopTabs({ scrollX, onTabPress }: HomeTopTabsProps) {
 
       {/* Indikator Slider Biru */}
       <Animated.View
-        style={[indicatorAnimatedStyle, { width: width / TABS.length }]}
-        className="h-1 bg-blue-500 rounded-full"
+        style={[indicatorAnimatedStyle, styles.indicator, { width: width / TABS.length }]}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: "#000",
+    borderBottomWidth: 1,
+    borderBottomColor: "#262626",
+  },
+  row: { flexDirection: "row" },
+  tabButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+  },
+  tabText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  indicator: { height: 4, backgroundColor: "#3b82f6", borderRadius: 9999 },
+});

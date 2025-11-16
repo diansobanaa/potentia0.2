@@ -1,47 +1,39 @@
-// Lokasi: app/(app)/(tabs)/_layout.tsx
+// Relocated: app/(app)/(tabs)/_layout.tsx
 
 import React from "react";
 import { Tabs } from "expo-router";
-import { TabBarIcon } from "@/src/shared/ui/TabBarIcon"; // Helper ikon kita
+import { TabBarIcon } from "@/src/shared/ui/TabBarIcon";
+import { HomeHeader } from "@/src/features/dashboard/ui/HomeHeader";
 import { useDrawerProgress } from "@react-navigation/drawer";
 import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import { Dimensions } from "react-native";
 
-// Lebar layar untuk animasi gaya "X-style"
 const { width } = Dimensions.get("window");
 
 export default function TabsLayout() {
   const progress = useDrawerProgress();
 
-  // Animasi konten utama saat drawer terbuka
   const animatedStyle = useAnimatedStyle(() => {
     const scale = interpolate(progress.value, [0, 1], [1, 0.8]);
     const translateX = interpolate(progress.value, [0, 1], [0, width * 0.65]);
     const borderRadius = interpolate(progress.value, [0, 1], [0, 30]);
-    return {
-      borderRadius,
-      transform: [{ scale }, { translateX }],
-    };
+    return { borderRadius, transform: [{ scale }, { translateX }] };
   });
 
   return (
     <Animated.View style={[{ flex: 1, overflow: "hidden" }, animatedStyle]}>
       <Tabs
         screenOptions={{
-          headerShown: false, // Header akan kita buat kustom di dalam 'home'
-          
-          // --- Styling "X-style" ---
-          tabBarShowLabel: false, // Sembunyikan label (Hanya ikon)
-          tabBarActiveTintColor: "white", // Warna ikon aktif
-          tabBarInactiveTintColor: "gray", // Warna ikon tidak aktif
-          tabBarStyle: {
-            backgroundColor: "black", // Latar belakang tab bar
-            borderTopWidth: 0, // Hapus garis border atas
-          },
+          headerShown: true,
+          header: () => <HomeHeader />,
+          tabBarShowLabel: false,
+          tabBarActiveTintColor: "white",
+          tabBarInactiveTintColor: "gray",
+          tabBarStyle: { backgroundColor: "black", borderTopWidth: 0 },
         }}
       >
         <Tabs.Screen
-          name="home" // Ini akan menunjuk ke file 'home.tsx'
+          name="home"
           options={{
             title: "Home",
             tabBarIcon: ({ color, focused }) => (

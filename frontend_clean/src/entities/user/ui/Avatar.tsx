@@ -1,6 +1,6 @@
 // Lokasi: src/entities/user/ui/Avatar.tsx
 
-import { Image, View, Text } from "react-native";
+import { Image, View, Text, StyleSheet } from "react-native";
 
 interface AvatarProps {
   source?: string | null;
@@ -9,10 +9,8 @@ interface AvatarProps {
 }
 
 export function Avatar({ source, name, size = "medium" }: AvatarProps) {
-  const sizeClasses =
-    size === "medium" ? "w-12 h-12" : "w-10 h-10";
-  const textClasses =
-    size === "medium" ? "text-xl" : "text-lg";
+  const sizeStyle = size === "medium" ? styles.sizeMd : styles.sizeSm;
+  const textStyle = size === "medium" ? styles.textMd : styles.textSm;
 
   // Ambil inisial jika tidak ada gambar
   const initials =
@@ -24,20 +22,28 @@ export function Avatar({ source, name, size = "medium" }: AvatarProps) {
       .toUpperCase() || "?";
 
   return (
-    <View
-      className={`
-        ${sizeClasses}
-        rounded-full bg-neutral-700 
-        justify-center items-center overflow-hidden
-      `}
-    >
+    <View style={[styles.container, sizeStyle]}>
       {source ? (
-        <Image source={{ uri: source }} className="w-full h-full" />
+        <Image source={{ uri: source }} style={styles.image} />
       ) : (
-        <Text className={`${textClasses} text-white font-bold`}>
-          {initials}
-        </Text>
+        <Text style={[textStyle, styles.text]}>{initials}</Text>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    borderRadius: 9999,
+    backgroundColor: "#404040",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  sizeMd: { width: 48, height: 48 },
+  sizeSm: { width: 40, height: 40 },
+  image: { width: "100%", height: "100%" },
+  text: { color: "#fff", fontWeight: "700" },
+  textMd: { fontSize: 20 },
+  textSm: { fontSize: 18 },
+});

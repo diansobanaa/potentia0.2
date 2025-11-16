@@ -23,22 +23,13 @@ export const useCheckSession = () => {
         }
 
         if (data.session) {
-          // 2. Jika sesi Supabase ada, validasi ke backend FastAPI kita
-          // Klien Axios kita (apiClient) sudah otomatis menyertakan token
-          // berkat interceptor yang kita buat di Fase 1.
-          try {
-            const response = await apiClient.get<User>("/api/v1/auth/me");
-            
-            // 3. Sukses! Simpan data user dari FastAPI ke store Zustand
-            setUser(response.data);
-
-          } catch (apiError) {
-            // Sesi Supabase valid, tapi backend FastAPI menolak kita
-            // (misal: user dihapus). Logout paksa.
-            console.warn("Sesi valid tapi /auth/me gagal:", apiError);
-            await supabase.auth.signOut();
-            setUser(null);
-          }
+            // 2. [ALPHA] Sementara skip backend check, langsung set user dari Supabase
+            const supabaseUser = data.session.user;
+            setUser({
+              id: supabaseUser.id,
+              email: supabaseUser.email || "",
+              created_at: supabaseUser.created_at || new Date().toISOString(),
+            } as User);
         } else {
           // 4. Tidak ada sesi Supabase sama sekali
           setUser(null);
@@ -56,14 +47,14 @@ export const useCheckSession = () => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN") {
-          // Jika baru login, ambil data /auth/me
-          try {
-            const response = await apiClient.get<User>("/api/v1/auth/me");
-            setUser(response.data);
-          } catch (apiError) {
-            console.error("Gagal mengambil /auth/me setelah SIGNED_IN:", apiError);
-            setUser(null);
-          }
+            // [ALPHA] Langsung set user dari session Supabase
+            if (session?.user) {
+              setUser({
+                id: session.user.id,
+                email: session.user.email || "",
+                created_at: session.user.created_at || new Date().toISOString(),
+              } as User);
+            }
         } else if (event === "SIGNED_OUT") {
           // Jika logout, bersihkan store
           setUser(null);

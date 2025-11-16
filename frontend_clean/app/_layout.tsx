@@ -40,7 +40,7 @@ export default function RootLayout() {
     if (authStatus === "authenticated" && inAuthGroup) {
       // Pengguna sudah login TAPI masih di halaman auth (login/signup)
       // Pindahkan paksa ke dashboard (halaman utama)
-      router.replace("/(tabs)"); // Arahkan ke layout (tabs)
+      router.replace("/(app)/(tabs)/home"); // Arahkan ke tab Home di dalam Drawer
       SplashScreen.hideAsync();
     }
 
