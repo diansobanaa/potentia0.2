@@ -304,10 +304,10 @@ async def update_conversation_title_manual(
     
     try:
         updated_convo = await conversation_queries.update_conversation_title(
-            client=client,
-            user_id=user.id,
-            conversation_id=conversation_id,
-            new_title=payload.title
+            client,
+            user.id,
+            conversation_id,
+            payload.title
         )
         
         if not updated_convo:
@@ -316,9 +316,7 @@ async def update_conversation_title_manual(
         return ConversationListItem(
             conversation_id=updated_convo["conversation_id"],
             title=updated_convo["title"],
-            last_message_at=updated_convo["last_message_at"],
-            created_at=updated_convo["created_at"],
-            message_count=updated_convo.get("message_count", 0)
+            updated_at=updated_convo.get("last_message_at") or updated_convo.get("updated_at") or updated_convo.get("created_at"),
         )
         
     except NotFoundError as e:

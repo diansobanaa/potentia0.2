@@ -50,9 +50,13 @@ class ConversationMessagesService:
             
             message_items: List[MessageListItem] = []
             for msg in messages_data:
+                # Map 'ai' role to 'assistant' to satisfy Pydantic validation
+                role = msg['role']
+                if role == 'ai':
+                    role = 'assistant'
                 message_items.append(MessageListItem(
                     message_id=msg['message_id'],
-                    role=msg['role'],
+                    role=role,
                     content=msg['content'],
                     created_at=msg['created_at']
                 ))
