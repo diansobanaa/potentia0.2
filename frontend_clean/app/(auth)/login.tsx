@@ -66,7 +66,7 @@ export default function LoginScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>X</Text>
+          <Text style={styles.logo}>Dirga Mahardika</Text>
         </View>
 
         <View style={styles.formContainer}>

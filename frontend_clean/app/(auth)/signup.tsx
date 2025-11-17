@@ -31,8 +31,13 @@ export default function SignUpScreen() {
   });
   // --- Akhir Integrasi ---
 
-  const handleGoogleSignUp = async () => {/* ... (logika sama) ... */};
-  const handleAppleSignUp = async () => {/* ... (logika sama) ... */};
+  const handleGoogleSignUp = async () => {
+    console.log("Tombol Google Sign Up diklik");
+  };
+
+  const handleAppleSignUp = async () => {
+    console.log("Tombol Apple Sign Up diklik");
+  };
 
   // Fungsi onSubmit sekarang menerima data yang sudah divalidasi
   const onSubmit = async (data: SignUpFormFields) => {
@@ -66,7 +71,7 @@ export default function SignUpScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>X</Text>
+          <Text style={styles.logo}>Dirga Mahardika</Text>
         </View>
         <View style={styles.formContainer}>
           <Text style={styles.title}>

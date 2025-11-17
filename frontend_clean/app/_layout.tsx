@@ -12,7 +12,7 @@ import { SplashScreen } from "expo-router";
 // Tampilkan Splash Screen (layar loading) secara default
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+export default function RootLayout({ children }: { children?: React.ReactNode }) {
   // 1. Jalankan hook pengecekan sesi
   useCheckSession();
 
@@ -52,6 +52,19 @@ export default function RootLayout() {
     }
   }, [authStatus, segments, router]);
 
+  // Fallback: jika status masih 'loading' lebih dari 2.5 detik, anggap tidak ada sesi (lebih agresif di web)
+  useEffect(() => {
+    if (authStatus !== 'loading') return;
+    const t = setTimeout(() => {
+      if (authStatus === 'loading') {
+        // Force unauthenticated to unblock UI
+        router.replace('/(auth)/login');
+        SplashScreen.hideAsync();
+      }
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [authStatus, router]);
+
   // Sembunyikan header default
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false }}>{children}</Stack>;
 }

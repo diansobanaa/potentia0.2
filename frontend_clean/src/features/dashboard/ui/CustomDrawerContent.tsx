@@ -2,24 +2,25 @@
 
 import React from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Link, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/src/shared/api/supabase";
 import { useAuthActions, useAuthUser } from "@/src/features/auth/store";
 import { Avatar } from "@/src/entities/user/ui/Avatar";
+import ConversationSidebar from "@/src/features/chat/ui/ConversationSidebar";
 
-// Komponen link untuk item menu
-const DrawerLink = ({ href, text }: { href: string; text: string }) => (
-  <Link href={href} asChild>
-    <TouchableOpacity style={styles.linkItem}>
-      <Text style={styles.linkText}>{text}</Text>
-    </TouchableOpacity>
-  </Link>
+// Komponen menu item dengan icon
+const MenuItem = ({ icon, text, onPress }: { icon: string; text: string; onPress?: () => void }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
+    <Ionicons name={icon as any} size={24} color="#fff" style={styles.menuIcon} />
+    <Text style={styles.menuText}>{text}</Text>
+  </TouchableOpacity>
 );
 
 export function CustomDrawerContent() {
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // Untuk padding atas (area notch)
+  const insets = useSafeAreaInsets();
   const user = useAuthUser();
   const { logout } = useAuthActions();
 
@@ -31,63 +32,110 @@ export function CustomDrawerContent() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* --- Header Profil --- */}
-        <Link href="/(app)/profile" asChild>
-          <TouchableOpacity style={styles.profileHeader}>
-            <Avatar source={null} name={user?.name || user?.email} size="medium" />
-            <Text style={styles.profileName}>{user?.name || "Anonymous"}</Text>
-            <Text style={styles.profileHandle}>@{user?.email?.split("@")[0] || "user"}</Text>
-            <View style={styles.followRow}>
-              <Text style={styles.followText}><Text style={styles.followBold}>135</Text> Following</Text>
-              <Text style={styles.followText}><Text style={styles.followBold}>86</Text> Followers</Text>
-            </View>
-          </TouchableOpacity>
-        </Link>
-
-        {/* --- Daftar Link Navigasi --- */}
-        <View style={styles.linksGroup}>
-          <DrawerLink href="/(app)/profile" text="Profile" />
-          <DrawerLink href="/(app)/premium" text="Premium" />
-          <DrawerLink href="/(app)/bookmarks" text="Bookmarks" />
-          <DrawerLink href="/(app)/lists" text="Lists" />
-          <DrawerLink href="/(app)/spaces" text="Spaces" />
-          <DrawerLink href="/(app)/monetization" text="Monetization" />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Header Profile */}
+        <View style={styles.profileSection}>
+          <Avatar source={null} name={user?.name || user?.email} size="medium" />
+          <Text style={styles.profileName}>{user?.name || "Dian Sobana"}</Text>
+          <Text style={styles.profileHandle}>@{user?.email?.split("@")[0] || "DsobBonek"}</Text>
+          
+          <View style={styles.statsRow}>
+            <Text style={styles.statsText}>
+              <Text style={styles.statsBold}>135</Text>
+              <Text style={styles.statsLabel}> Following</Text>
+            </Text>
+            <Text style={styles.statsText}>
+              <Text style={styles.statsBold}>86</Text>
+              <Text style={styles.statsLabel}> Followers</Text>
+            </Text>
+          </View>
         </View>
 
-        {/* --- Divider --- */}
+        {/* Menu Items */}
+        <View style={styles.menuSection}>
+          <MenuItem icon="person-outline" text="Profile" onPress={() => router.push("/(app)/profile" as any)} />
+          <MenuItem icon="logo-twitter" text="Premium" onPress={() => router.push("/(app)/premium" as any)} />
+          <MenuItem icon="play-circle-outline" text="Video" onPress={() => {}} />
+          <MenuItem icon="chatbubble-outline" text="Chat" onPress={() => {}} />
+          <ConversationSidebar />
+          <MenuItem icon="people-outline" text="Communities" onPress={() => {}} />
+          <MenuItem icon="bookmark-outline" text="Bookmarks" onPress={() => router.push("/(app)/bookmarks" as any)} />
+          <MenuItem icon="list-outline" text="Lists" onPress={() => router.push("/(app)/lists" as any)} />
+          <MenuItem icon="mic-outline" text="Spaces" onPress={() => router.push("/(app)/spaces" as any)} />
+          <MenuItem icon="cash-outline" text="Monetization" onPress={() => router.push("/(app)/monetization" as any)} />
+        </View>
+
+        {/* Divider */}
         <View style={styles.divider} />
 
-        <View style={styles.linksGroup}>
-          <DrawerLink href="/(app)/settings" text="Settings and privacy" />
-          <DrawerLink href="/(app)/help" text="Help Center" />
+        {/* Bottom Menu Items */}
+        <View style={styles.menuSection}>
+          <MenuItem icon="leaf-outline" text="Open Grok" onPress={() => {}} />
+          <MenuItem icon="settings-outline" text="Settings and privacy" onPress={() => router.push("/(app)/settings" as any)} />
+          <MenuItem icon="log-out-outline" text="Log out" onPress={handleLogout} />
         </View>
       </ScrollView>
-
-      {/* --- Tombol Logout di Bawah --- */}
-      <View style={styles.logoutBar}>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Log out</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-  scrollContent: { padding: 24 },
-  profileHeader: { marginBottom: 16 },
-  profileName: { color: "#fff", fontSize: 24, fontWeight: "700", marginTop: 8 },
-  profileHandle: { color: "#a3a3a3", fontSize: 16 },
-  followRow: { flexDirection: "row", gap: 16, marginTop: 12 },
-  followText: { color: "#fff" },
-  followBold: { fontWeight: "700" },
-  linksGroup: { gap: 8 },
-  divider: { height: 1, backgroundColor: "#262626", marginVertical: 16 },
-  linkItem: { paddingVertical: 12 },
-  linkText: { color: "#fff", fontSize: 20, fontWeight: "700" },
-  logoutBar: { padding: 24, borderTopWidth: 1, borderTopColor: "#262626" },
-  logoutButton: { paddingVertical: 8 },
-  logoutText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  scrollContent: { padding: 16 },
+  profileSection: { 
+    marginBottom: 24,
+    paddingBottom: 12
+  },
+  profileName: { 
+    color: "#fff", 
+    fontSize: 20, 
+    fontWeight: "700", 
+    marginTop: 12,
+    marginBottom: 4
+  },
+  profileHandle: { 
+    color: "#71767b", 
+    fontSize: 15,
+    marginBottom: 12
+  },
+  statsRow: { 
+    flexDirection: "row", 
+    gap: 20 
+  },
+  statsText: { 
+    color: "#71767b",
+    fontSize: 15
+  },
+  statsBold: { 
+    color: "#fff",
+    fontWeight: "700" 
+  },
+  statsLabel: {
+    color: "#71767b"
+  },
+  menuSection: { 
+    gap: 4,
+    marginBottom: 8
+  },
+  menuItem: { 
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 20
+  },
+  menuIcon: {
+    width: 24,
+    height: 24
+  },
+  menuText: { 
+    color: "#fff", 
+    fontSize: 20,
+    fontWeight: "400"
+  },
+  divider: { 
+    height: 1, 
+    backgroundColor: "#2f3336", 
+    marginVertical: 12 
+  }
 });

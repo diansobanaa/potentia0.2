@@ -4,9 +4,9 @@ import axios from "axios";
 import { supabase } from "./supabase"; // Impor klien Supabase
 import { env } from "@/src/shared/config/env"; // Impor env kita
 
-// 1. Buat instansi Axios dasar
+// 1. Buat instansi Axios dasar (fallback aman bila baseURL kosong)
 const apiClient = axios.create({
-  baseURL: env.API_URL,
+  baseURL: env.API_URL || undefined,
   headers: {
     "Content-Type": "application/json",
   },

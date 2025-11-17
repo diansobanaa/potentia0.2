@@ -7,21 +7,42 @@ import { Platform } from "react-native";
 import { env } from "@/src/shared/config/env";
 import * as Linking from "expo-linking";
 
-const SecureStoreAdapter = {
+// Cross-platform storage: localStorage (web) and SecureStore (native)
+const CrossPlatformStorage = {
   getItem: (key: string) => {
     if (Platform.OS === "web") {
-      return null;
+      try {
+        return typeof window !== "undefined"
+          ? window.localStorage.getItem(key)
+          : null;
+      } catch {
+        return null;
+      }
     }
     return SecureStore.getItemAsync(key);
   },
   setItem: (key: string, value: string) => {
     if (Platform.OS === "web") {
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(key, value);
+        }
+      } catch {
+        // ignore quota or privacy errors
+      }
       return;
     }
     SecureStore.setItemAsync(key, value);
   },
   removeItem: (key: string) => {
     if (Platform.OS === "web") {
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(key);
+        }
+      } catch {
+        // ignore
+      }
       return;
     }
     SecureStore.deleteItemAsync(key);
@@ -30,7 +51,7 @@ const SecureStoreAdapter = {
 
 export const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
   auth: {
-    storage: SecureStoreAdapter as any,
+    storage: CrossPlatformStorage as any,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
