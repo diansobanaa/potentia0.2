@@ -31,9 +31,11 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 .dockerignore
-
-# Misc
-*.log
+# Ignore environment files
+.env
+.env.*
+backend/.env
+frontend/.env
 *.sqlite3
 .cache/
 pip-log.txt
