@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import apiClient from '@/src/shared/api/client';
+import { useSidebarStore } from '@/src/features/dashboard/store/sidebarStore';
 
 interface Conversation {
   conversation_id: string;
@@ -22,6 +23,7 @@ interface ListConversationSidebarProps {
 }
 
 const ListConversationSidebar = React.forwardRef<any, ListConversationSidebarProps>(function ListConversationSidebar(props, ref) {
+  const closeSidebar = useSidebarStore((s) => s.closeSidebar);
   const [conversations, setConversations] = useState<Conversation[]>(cachedConversations || []);
   const [loading, setLoading] = useState(!cachedConversations);
   const [expanded, setExpanded] = useState(false);
@@ -148,6 +150,7 @@ const ListConversationSidebar = React.forwardRef<any, ListConversationSidebarPro
           } else {
             router.push('/(app)/(tabs)/chat');
           }
+          closeSidebar();
         }}
         activeOpacity={0.8}
       >
@@ -191,12 +194,7 @@ const ListConversationSidebar = React.forwardRef<any, ListConversationSidebarPro
                 style={{ flex: 1 }}
                 onPress={() => {
                   router.push(`/(app)/(tabs)/chat/${conv.conversation_id}`);
-                  // Try to close sidebar if parent provides a close handler
-                  if (props.onCloseSidebar) {
-                    props.onCloseSidebar();
-                  } else if (ref && typeof ref !== 'function' && ref?.current && typeof ref.current.close === 'function') {
-                    ref.current.close();
-                  }
+                  closeSidebar();
                 }}
               >
                 <Text style={styles.title} numberOfLines={1}>{conv.title}</Text>

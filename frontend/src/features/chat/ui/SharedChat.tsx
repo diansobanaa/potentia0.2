@@ -1,288 +1,281 @@
-
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { 
+  View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList,
+  KeyboardAvoidingView, Platform, ActivityIndicator,
+  NativeSyntheticEvent, NativeScrollEvent, ListRenderItem, Keyboard, LayoutChangeEvent
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MarkdownText } from '@/src/shared/ui/MarkdownText';
-import { useAuthUser } from '@/src/features/auth/store';
-import { supabase } from '@/src/shared/api/supabase';
-import { env } from '@/src/shared/config/env';
+import { useChatStore } from '@/src/features/chat/store';
+import { HiTLApprovalCard } from '@/src/features/chat/ui/HiTLApprovalCard';
+import type { Message } from '@/src/features/chat/types';
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  modelBar: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: '#2f3336', backgroundColor: '#000' },
-  modelButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#0b1620', borderWidth: 1, borderColor: '#1d9bf0', borderRadius: 999 },
-  modelText: { color: '#1d9bf0', fontSize: 12, fontWeight: '600' },
-  modelMenu: { marginTop: 6, backgroundColor: '#111827', borderWidth: 1, borderColor: '#374151', borderRadius: 8, paddingVertical: 4, width: 240 },
-  modelMenuItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8 },
-  modelMenuItemActive: { backgroundColor: 'rgba(16,185,129,0.1)' },
-  modelMenuText: { color: '#e5e7eb', fontSize: 13 },
-  messagesContainer: { flex: 1 },
-  messagesContent: { padding: 16, gap: 12 },
-  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100 },
-  emptyTitle: { color: '#fff', fontSize: 24, fontWeight: '700', marginTop: 16 },
-  emptySubtitle: { color: '#71767b', fontSize: 15, marginTop: 8, textAlign: 'center' },
-  messageBubble: { padding: 12, borderRadius: 16, marginBottom: 8, maxWidth: '85%' },
-  userBubble: { alignSelf: 'flex-end', backgroundColor: '#1d9bf0' },
-  assistantBubble: { alignSelf: 'flex-start', backgroundColor: '#77797b24' },
-  messageHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  messageRole: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  messageContent: { color: '#fff', fontSize: 11, lineHeight: 16, fontStyle: 'italic' },
-  inputContainer: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, borderTopWidth: 1, borderTopColor: '#2f3336', backgroundColor: '#000', gap: 8 },
-  input: { flex: 1, backgroundColor: '#2f3336', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: '#fff', fontSize: 15, maxHeight: 100 },
-  sendButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2f3336', justifyContent: 'center', alignItems: 'center' },
-  sendButtonDisabled: { opacity: 0.5 },
-  reasoningContainer: {
-    borderRadius: 8,
-    paddingLeft: 12,
-    borderLeftWidth: 2,
-    borderLeftColor: '#305c4dff'
-  },
-  reasoningLabel: { color: '#30886b75', fontSize: 14, fontWeight: '500', marginBottom: 4 },
-  reasoningToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 12 },
-  reasoningToggleText: { color: '#10b981', fontSize: 12, fontWeight: '500' },
-  reasoningText: {
-    color: '#30886b',
-    fontSize: 10,
-    lineHeight: 15,
-    fontWeight: '400',
-    fontStyle: 'italic',
-  },
-  loadingBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8 },
-  loadingText: { color: '#fff', fontSize: 13 },
-});
+// --- PARSER BARU (Streaming Friendly) ---
+// Logic: Deteksi tag pembuka. Jika ada, ambil isinya. 
+// Jika tag penutup belum ada (masih ngetik), anggap sisa string sbg reasoning.
+const splitReasoningBlocks = (text: string) => {
+  if (!text) return [];
+  
+  const result: Array<{ type: 'reasoning' | 'text', content: string }> = [];
+  const openTagRegex = /(<tkD>|<thinkingDiv>)/i;
+  const closeTagRegex = /(<\/tkD>|<\/thinkingDiv>)/i;
 
-interface UsageInfo {
-  input_tokens?: number;
-  output_tokens?: number;
-  cost?: number;
-  model?: string;
-}
+  let remaining = text;
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  thinking?: string;
-  usage?: UsageInfo;
-  timestamp: Date;
-}
+  while (remaining.length > 0) {
+    const openMatch = openTagRegex.exec(remaining);
+
+    // 1. Jika tidak ada tag pembuka lagi, sisanya adalah teks biasa
+    if (!openMatch) {
+      if (remaining.trim()) result.push({ type: 'text', content: remaining });
+      break;
+    }
+
+    // 2. Ambil teks SEBELUM tag pembuka (jika ada)
+    if (openMatch.index > 0) {
+      const preText = remaining.slice(0, openMatch.index);
+      if (preText.trim()) result.push({ type: 'text', content: preText });
+    }
+
+    // 3. Proses isi Reasoning
+    // Potong string sampai setelah tag pembuka
+    const contentStartIndex = openMatch.index + openMatch[0].length;
+    remaining = remaining.slice(contentStartIndex);
+
+    const closeMatch = closeTagRegex.exec(remaining);
+
+    if (closeMatch) {
+      // Kasus A: Block sudah selesai (ada tag penutup)
+      const reasoningContent = remaining.slice(0, closeMatch.index);
+      if (reasoningContent.trim()) {
+        result.push({ type: 'reasoning', content: reasoningContent });
+      }
+      // Lanjut parsing sisanya setelah tag penutup
+      remaining = remaining.slice(closeMatch.index + closeMatch[0].length);
+    } else {
+      // Kasus B: Block BELUM selesai (Streaming sedang jalan)
+      // Anggap semua sisa string saat ini adalah bagian dari reasoning
+      if (remaining.trim()) {
+        result.push({ type: 'reasoning', content: remaining });
+      }
+      break; // Tidak ada lagi yang bisa diparse
+    }
+  }
+
+  return result;
+};
+
+// --- COMPONENTS ---
+
+// 1. Thinking Block (Footer)
+const ThinkingBlock = ({ status }: { status: string }) => (
+  <View style={styles.thinkingContainer}>
+    <View style={styles.thinkingBubble}>
+      <ActivityIndicator size="small" color="#1d9bf0" />
+      <Text style={styles.thinkingText}>{status || 'AI is thinking...'}</Text>
+    </View>
+  </View>
+);
+
+// 2. Streaming Bubble (Pesan yang sedang diketik)
+const StreamingBubble = ({ content }: { content: string }) => {
+  if (!content) return null;
+  
+  // Gunakan parser yang sama agar saat streaming pun reasoning block terlihat
+  const blocks = splitReasoningBlocks(content);
+
+  return (
+    <View style={[styles.messageBubble, styles.assistantBubble]}>
+       {blocks.map((block, i) => {
+         if (block.type === 'reasoning') {
+           // Saat streaming, kita bisa paksa expand reasoning agar terlihat prosesnya
+           return (
+             <View key={i} style={styles.reasoningContainer}>
+               <View style={styles.reasoningToggle}>
+                  <Text style={styles.reasoningToggleText}>Thinking Process...</Text>
+                  <ActivityIndicator size="small" color="#10b981" />
+               </View>
+               <MarkdownText style={styles.reasoningText}>{block.content}</MarkdownText>
+             </View>
+           );
+         }
+         return <MarkdownText key={i} style={styles.messageContent}>{block.content}</MarkdownText>;
+       })}
+    </View>
+  );
+};
+
+// 3. Chat Item (Pesan Permanen)
+const ChatItem = React.memo(({ item }: { item: Message }) => {
+  // Default expanded jika pesan masih baru (opsional)
+  const [isReasoningOpen, setIsReasoningOpen] = useState(false); 
+  const toggleReasoning = () => setIsReasoningOpen(p => !p);
+
+  if (item.approvalRequest) {
+    return <View style={{ marginBottom: 12 }}><Text style={{color:'gray'}}>Approval Request</Text></View>;
+  }
+
+  const blocks = useMemo(() => splitReasoningBlocks(item.content), [item.content]);
+  const hasReasoning = blocks.some(b => b.type === 'reasoning');
+
+  return (
+    <View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+      {hasReasoning && (
+        <TouchableOpacity onPress={toggleReasoning} style={styles.reasoningToggle}>
+          <Text style={styles.reasoningToggleText}>{isReasoningOpen ? 'Hide Reasoning' : 'Show Reasoning'}</Text>
+          <Ionicons name={isReasoningOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#10b981" />
+        </TouchableOpacity>
+      )}
+      
+      {blocks.map((block, i) => {
+        if (block.type === 'reasoning') {
+           if (!isReasoningOpen) return null; // Hide jika closed
+           return (
+            <View key={i} style={styles.reasoningContainer}>
+              <MarkdownText style={styles.reasoningText}>{block.content}</MarkdownText>
+            </View>
+           );
+        }
+        return <MarkdownText key={i} style={styles.messageContent}>{block.content}</MarkdownText>;
+      })}
+    </View>
+  );
+}, (prev, next) => prev.item.id === next.item.id && prev.item.content === next.item.content);
 
 
-interface SharedChatProps {
-  conversationId: string | null;
-}
+// --- MAIN COMPONENT ---
+function SharedChat({ conversationId }: { conversationId: string | null }) {
+  const { 
+    messages, activeConversationId, streamingMessage, streamingStatus, 
+    approvalRequest, isLoading, 
+    loadMessages, sendMessage, setActiveConversation, approveTool, rejectTool 
+  } = useChatStore();
 
-// Module-level variable to cache models and prevent multiple fetches per app session
-let cachedModels: string[] | null = null;
-let hasFetchedModels = false;
-
-function SharedChat({ conversationId }: SharedChatProps) {
-  const user = useAuthUser();
-  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [showThinking, setShowThinking] = useState<{ [key: string]: boolean }>({});
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [modelMenuOpen, setModelMenuOpen] = useState<boolean>(false);
-  const [isHistoryLoading, setIsHistoryLoading] = useState<boolean>(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [reasoningOpen, setReasoningOpen] = useState<{ [id: string]: boolean }>({});
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const PAGE_SIZE = 10;
-  const isFetchingRef = useRef(false);
+  const flatListRef = useRef<FlatList>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  
+  const scrollYRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  const listHeightRef = useRef(0);
+  const isUserDragging = useRef(false);
 
-  // Fetch available models from API
   useEffect(() => {
-    if (hasFetchedModels && cachedModels) {
-      setAvailableModels(cachedModels);
-      if (!selectedModel && cachedModels.length > 0) {
-        setSelectedModel(cachedModels[0]);
-      }
-      return;
+    setActiveConversation(conversationId);
+    if (conversationId) {
+      loadMessages(conversationId);
     }
-    const fetchModels = async () => {
-      try {
-        console.log('[MODEL_FETCH] Fetching available models from endpoint...');
-        const token = await getAccessToken();
-        const url = `${env.API_URL}/api/v1/chat/models/available`;
-        const res = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to fetch models');
-        const data = await res.json();
-        if (Array.isArray(data.available_models)) {
-          cachedModels = data.available_models;
-          hasFetchedModels = true;
-          setAvailableModels(data.available_models);
-          if (!selectedModel && data.available_models.length > 0) {
-            setSelectedModel(data.available_models[0]);
-          }
-        }
-      } catch (e) {
-        setAvailableModels([]);
-        console.error('Failed to fetch available models:', e);
-      }
-    };
-    fetchModels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [env.API_URL]);
-
-  // Fetch chat history if conversationId exists
-  useEffect(() => {
-    if (!conversationId) {
-      setMessages([]);
-      setIsHistoryLoading(false);
-      return;
-    }
-    setIsHistoryLoading(true);
-    const fetchHistory = async () => {
-      try {
-        const token = await getAccessToken();
-        const url = `${env.API_URL}/api/v1/chat/${conversationId}/messages?limit=${PAGE_SIZE}&offset=0`;
-        console.log('[DEBUG] Fetching chat history from:', url);
-        const res = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`Failed to load history: ${res.status} - ${errText}`);
-        }
-        const data = await res.json();
-        // Pastikan ambil dari data.items jika ada
-        const hydrated: Message[] = (data.items || data || []).map((m: any, idx: number) => ({
-          id: m.id ? String(m.id) : `${Date.now()}-${idx}`,
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.content || '',
-          thinking: m.thinking,
-          usage: m.usage,
-          timestamp: m.created_at ? new Date(m.created_at) : new Date(),
-        }));
-        // Urutkan pesan dari yang paling lama ke paling baru
-        hydrated.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-        setMessages(hydrated);
-      } catch (e) {
-        setMessages([]);
-        console.error('Load history error:', e);
-      } finally {
-        setIsHistoryLoading(false);
-      }
-    };
-    fetchHistory();
   }, [conversationId]);
 
-  const getAccessToken = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      return session?.access_token || '';
-    } catch (error) {
-      console.error('Failed to get access token:', error);
-      return '';
+  const currentMessages = activeConversationId ? (messages[activeConversationId] || []) : [];
+
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      const distanceFromBottom = contentHeightRef.current - listHeightRef.current - scrollYRef.current;
+      if (distanceFromBottom < 500) {
+        flatListRef.current?.scrollToEnd({ animated: true });
+        setIsAtBottom(true);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const handleSend = () => {
+    if (!inputText.trim() || isLoading) return;
+    sendMessage(inputText);
+    setInputText('');
+    setIsAtBottom(true);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const handleContentSizeChange = (w: number, h: number) => {
+    contentHeightRef.current = h;
+    if ((isAtBottom || isLoading || streamingMessage) && !isUserDragging.current) {
+      flatListRef.current?.scrollToEnd({ animated: true });
     }
   };
 
-  // --- Reasoning block parser: split content into reasoning container and normal text ---
-  function splitReasoningBlocks(text: string): Array<{ type: 'reasoning' | 'text', content: string }> {
-    const regex = /(<tkD>|<thinkingDiv>)([\s\S]*?)(<\/tkD>|<\/thinkingDiv>)/gi;
-    let result: Array<{ type: 'reasoning' | 'text', content: string }> = [];
-    let lastIndex = 0;
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        result.push({ type: 'text', content: text.slice(lastIndex, match.index) });
-      }
-      result.push({ type: 'reasoning', content: match[2].trim() });
-      lastIndex = regex.lastIndex;
-    }
-    if (lastIndex < text.length) {
-      result.push({ type: 'text', content: text.slice(lastIndex) });
-    }
-    return result.filter(b => b.content.trim() !== '');
-  }
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+    scrollYRef.current = contentOffset.y;
+    const isClose = layoutMeasurement.height + contentOffset.y >= contentSize.height - 50;
+    setIsAtBottom(isClose);
+    setShowScrollButton(!isClose);
+  };
 
-  const handleToggleReasoning = useCallback((id: string) => {
-    setReasoningOpen(prev => ({ ...prev, [id]: !prev[id] }));
-  }, []);
-
-  // UI rendering (simplified, can be expanded as needed)
+  const renderItem: ListRenderItem<Message> = useCallback(({ item }) => <ChatItem item={item} />, []);
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
-      <View style={styles.modelBar}>
-        <TouchableOpacity onPress={() => setModelMenuOpen(v => !v)} style={styles.modelButton} activeOpacity={0.8}>
-          <Ionicons name="options-outline" size={16} color="#1d9bf0" />
-          <Text style={styles.modelText}>{selectedModel}</Text>
-          <Ionicons name={modelMenuOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#71767b" />
-        </TouchableOpacity>
-        {modelMenuOpen && (
-          <View style={styles.modelMenu}>
-            {availableModels.length === 0 ? (
-              <Text style={{ color: '#fff', padding: 12 }}>Memuat model...</Text>
-            ) : (
-              availableModels.map(m => (
-                <TouchableOpacity key={m} style={[styles.modelMenuItem, selectedModel === m && styles.modelMenuItemActive]} onPress={() => { setSelectedModel(m); setModelMenuOpen(false); }}>
-                  <Text style={styles.modelMenuText}>{m}</Text>
-                  {selectedModel === m && <Ionicons name="checkmark" size={14} color="#10b981" />}
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        )}
-        {isHistoryLoading && (
-          <View style={styles.loadingBubble}>
-            <ActivityIndicator size='small' color='#1d9bf0' />
-            <Text style={styles.loadingText}>Memuat riwayat chat...</Text>
-          </View>
-        )}
-      </View>
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.messagesContainer}
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+      
+      <FlatList
+        ref={flatListRef}
+        data={currentMessages}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        
+        onContentSizeChange={handleContentSizeChange}
+        onLayout={(e) => listHeightRef.current = e.nativeEvent.layout.height}
+        onScroll={handleScroll}
+        onScrollBeginDrag={() => isUserDragging.current = true}
+        onScrollEndDrag={() => isUserDragging.current = false}
+        scrollEventThrottle={32}
+        
+        removeClippedSubviews={true}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        
         contentContainerStyle={styles.messagesContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {!conversationId ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={64} color="#71767b" />
-            <Text style={styles.emptyTitle}>Mulai Percakapan</Text>
-            <Text style={styles.emptySubtitle}>Tanyakan apa saja kepada AI Assistant</Text>
-          </View>
-        ) : (
-          messages.map(message => {
-            const blocks = splitReasoningBlocks(message.content);
-            const hasReasoning = blocks.some(b => b.type === 'reasoning');
+        
+        ListFooterComponent={
+          <View>
+            {/* 1. Streaming Bubble (Sedang Diketik) */}
+            {streamingMessage ? <StreamingBubble content={streamingMessage} /> : null}
 
-            return (
-              <View key={message.id} style={[styles.messageBubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-                {hasReasoning && (
-                  <TouchableOpacity onPress={() => handleToggleReasoning(message.id)} style={styles.reasoningToggle}>
-                    <Text style={styles.reasoningToggleText}>
-                      {reasoningOpen[message.id] ? 'Reasoning' : 'Reasoning'}
-                    </Text>
-                    <Ionicons name={reasoningOpen[message.id] ? 'chevron-up' : 'chevron-down'} size={16} color="#10b981" />
-                  </TouchableOpacity>
-                )}
-                {hasReasoning && reasoningOpen[message.id] && (
-                  <View style={styles.reasoningContainer}>
-                    {blocks.filter(b => b.type === 'reasoning').map((block, i) => (
-                      <MarkdownText key={i} style={styles.reasoningText}>{block.content}</MarkdownText>
-                    ))}
-                  </View>
-                )}
-                {/* Main message content (text blocks only) */}
-                {blocks.filter(b => b.type === 'text').map((block, i) => (
-                  <MarkdownText key={i} style={styles.messageContent}>{block.content}</MarkdownText>
-                ))}
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
+            {/* 2. Approval Card */}
+            {approvalRequest ? (
+               <View style={{ marginVertical: 10 }}>
+                 <HiTLApprovalCard 
+                    data={approvalRequest} 
+                    onApprove={() => approveTool()} 
+                    onDeny={() => rejectTool()} 
+                 />
+               </View>
+            ) : null}
+
+            {/* 3. Thinking (Hanya jika belum ada teks) */}
+            {(isLoading && !streamingMessage && !approvalRequest) || (streamingStatus && !streamingMessage && !approvalRequest) ? (
+              <ThinkingBlock status={streamingStatus} />
+            ) : null}
+          </View>
+        }
+      />
+
+      {showScrollButton && (
+        <TouchableOpacity style={styles.scrollToBottomBtn} onPress={() => { setIsAtBottom(true); flatListRef.current?.scrollToEnd({ animated: true }); }}>
+          <Ionicons name="arrow-down" size={20} color="white" />
+          {(isLoading || streamingMessage) && <View style={styles.newMsgBadge} />}
+        </TouchableOpacity>
+      )}
+
       <View style={styles.inputContainer}>
-        <TextInput style={styles.input} placeholder="Ketik pesan..." placeholderTextColor="#71767b" value={inputText} onChangeText={setInputText} multiline maxLength={2000} editable={!isLoading} />
-        <TouchableOpacity style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]} /* onPress={handleSend} */ disabled={!inputText.trim() || isLoading}>
-          <Ionicons name="send" size={20} color={inputText.trim() && !isLoading ? '#1d9bf0' : '#71767b'} />
+        <TextInput 
+          style={styles.input} 
+          value={inputText} 
+          onChangeText={setInputText} 
+          placeholder="Ketik pesan..." 
+          placeholderTextColor="#71767b"
+          multiline
+          editable={!isLoading && !streamingMessage} 
+        />
+        <TouchableOpacity 
+          style={[styles.sendButton, (!inputText.trim() || isLoading) && { opacity: 0.5 }]} 
+          onPress={handleSend}
+          disabled={!inputText.trim() || isLoading}
+        >
+          <Ionicons name="send" size={20} color={inputText.trim() ? "#1d9bf0" : "#71767b"} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -290,3 +283,29 @@ function SharedChat({ conversationId }: SharedChatProps) {
 }
 
 export default SharedChat;
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000' },
+  messagesContent: { padding: 16, gap: 12, paddingBottom: 30 },
+  
+  messageBubble: { padding: 12, borderRadius: 16, maxWidth: '85%' },
+  userBubble: { alignSelf: 'flex-end', backgroundColor: '#1d9bf0' },
+  assistantBubble: { alignSelf: 'flex-start', backgroundColor: '#2f3336' },
+  messageContent: { color: '#fff', fontSize: 15, lineHeight: 22 },
+  
+  reasoningContainer: { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: 8, padding: 8, marginTop: 4, borderLeftWidth: 2, borderColor: '#10b981' },
+  reasoningToggle: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  reasoningToggleText: { color: '#10b981', fontSize: 12, fontWeight: '600', marginRight: 4 },
+  reasoningText: { color: '#6ee7b7', fontSize: 12, fontStyle: 'italic' },
+  
+  thinkingContainer: { paddingVertical: 12, alignItems: 'flex-start', marginBottom: 10 },
+  thinkingBubble: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#16181c', padding: 12, borderRadius: 20, gap: 10, borderWidth: 1, borderColor: '#2f3336' },
+  thinkingText: { color: '#71767b', fontStyle: 'italic', fontSize: 14 },
+
+  inputContainer: { flexDirection: 'row', padding: 12, borderTopWidth: 1, borderColor: '#2f3336', alignItems: 'flex-end', gap: 8, backgroundColor: '#000' },
+  input: { flex: 1, backgroundColor: '#2f3336', borderRadius: 20, padding: 12, color: '#fff', maxHeight: 100 },
+  sendButton: { padding: 10, backgroundColor: '#2f3336', borderRadius: 20 },
+  
+  scrollToBottomBtn: { position: 'absolute', bottom: 80, right: 20, backgroundColor: '#1d9bf0', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', zIndex: 50, elevation: 5 },
+  newMsgBadge: { position: 'absolute', top: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: 'red' }
+});

@@ -1,5 +1,5 @@
 // app/(mobile)/_layout.tsx
-import React, { useState, useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,28 +13,27 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { CustomDrawerContent } from "@/src/features/dashboard/ui/CustomDrawerContent";
+import { useSidebarStore } from "@/src/features/dashboard/store/sidebarStore";
 import { TabBarIcon } from "@/src/shared/ui/TabBarIcon";
 
 const { width } = Dimensions.get("window");
 const SIDEBAR_WIDTH = width * 0.78;
 
 export default function MobileLayout() {
+
   const router = useRouter();
   const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
+  const { isOpen: sidebarOpen, openSidebar, closeSidebar } = useSidebarStore();
   const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
 
-  const openSidebar = () => {
-    setSidebarOpen(true);
-    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
-  };
-
-  const closeSidebar = () => {
-    Animated.spring(slideAnim, { toValue: -SIDEBAR_WIDTH, useNativeDriver: true }).start(() => {
-      setSidebarOpen(false);
-    });
-  };
+  // Sinkronkan animasi dengan global store
+  useEffect(() => {
+    if (sidebarOpen) {
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
+    } else {
+      Animated.spring(slideAnim, { toValue: -SIDEBAR_WIDTH, useNativeDriver: true }).start();
+    }
+  }, [sidebarOpen, slideAnim]);
 
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 10,
@@ -66,8 +65,8 @@ export default function MobileLayout() {
         </Animated.View>
 
         {/* Sidebar */}
-        <Animated.View style={[styles.sidebar, { transform: [{ translateX: slideAnim }] }]}>
-          <CustomDrawerContent sidebarWidth={SIDEBAR_WIDTH} />
+        <Animated.View style={[styles.sidebar, { transform: [{ translateX: slideAnim }] }]}> 
+          <CustomDrawerContent />
         </Animated.View>
 
         {/* Main Content */}

@@ -12,15 +12,15 @@ const styles = StyleSheet.create({
 		borderRadius: 20,
 		marginBottom: 10,
 		marginHorizontal: 10,
-		maxWidth: screenWidth * 0.85,
+		maxWidth: screenWidth * 0.97,
 	},
 	aiBubble: {
-		backgroundColor: '#1E1F20',
+		backgroundColor: '#1e1f202c',
 		alignSelf: 'flex-start',
 		borderBottomLeftRadius: 5,
 	},
 	userBubble: {
-		backgroundColor: '#004A77',
+		backgroundColor: '#6e859481',
 		alignSelf: 'flex-end',
 		borderBottomRightRadius: 5,
 	},

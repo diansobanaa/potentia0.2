@@ -31,13 +31,11 @@ export function CustomDrawerContent() {
   };
 
   // Fungsi penutup drawer/sidebar (ganti sesuai implementasi parent)
-  const handleCloseSidebar = () => {
-    // TODO: Ganti dengan fungsi penutup drawer/modal yang sesuai
-    // Contoh: jika pakai context/modal, panggil setShowDrawer(false) atau navigation.closeDrawer()
-    if (router.canGoBack && router.back) {
-      router.back();
-    }
-  };
+ const closeSidebar = () => {
+  Animated.spring(slideAnim, { toValue: -SIDEBAR_WIDTH, useNativeDriver: true }).start(() => {
+    setSidebarOpen(false);
+  });
+};
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}> 
@@ -66,7 +64,7 @@ export function CustomDrawerContent() {
           <MenuItem icon="logo-twitter" text="Premium" onPress={() => router.push("/(app)/premium" as any)} />
           <MenuItem icon="play-circle-outline" text="Video" onPress={() => {}} />
           <MenuItem icon="chatbubble-outline" text="Chat" onPress={() => {}} />
-          <ListConversationSidebar onPress={handleCloseSidebar} />
+          <ListConversationSidebar onPress={closeSidebar} />
           <MenuItem icon="people-outline" text="Communities" onPress={() => {}} />
           <MenuItem icon="bookmark-outline" text="Bookmarks" onPress={() => router.push("/(app)/bookmarks" as any)} />
           <MenuItem icon="list-outline" text="Lists" onPress={() => router.push("/(app)/lists" as any)} />
