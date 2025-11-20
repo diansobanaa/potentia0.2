@@ -339,9 +339,9 @@ Sistem chat kini mendukung 5 provider LLM dengan mekanisme fallback yang transpa
 
 AI kini menampilkan proses berpikir strategisnya secara eksplisit sebelum memberikan jawaban akhir, meningkatkan transparansi dan kualitas respons.
 
-* **Format Thinking**: Menggunakan wrapper `<thinkingDiv>` dengan markdown bold untuk judul setiap langkah berpikir (misalnya: `**Analisis Kueri**`, `**Strategi Jawaban**`).
+* **Format Thinking**: Menggunakan wrapper `<tkD>` dengan markdown bold untuk judul setiap langkah berpikir (misalnya: `**Analisis Kueri**`, `**Strategi Jawaban**`).
 * **Chain of Thought (CoT)**: Prompt agent (`AGENT_SYSTEM_PROMPT`) telah di-upgrade dengan metodologi CoT dari `developer_prompt.py`, memaksa AI untuk merencanakan strategi sebelum eksekusi.
-* **Streaming Real-Time**: Thinking process di-stream sebagai `token_chunk` biasa via SSE. Tidak ada parsing khusus di backend; frontend bertanggung jawab untuk mendeteksi dan styling `<thinkingDiv>`.
+* **Streaming Real-Time**: Thinking process di-stream sebagai `token_chunk` biasa via SSE. Tidak ada parsing khusus di backend; frontend bertanggung jawab untuk mendeteksi dan styling `<tkD>`.
 * **Enforcement Eksekusi**: Instruksi baru di prompt memastikan AI mengeksekusi **SEMUA** poin yang disebutkan di thinking block (mengatasi masalah AI berhenti mid-answer).
 
 **File yang Diubah**: `agent_prompts.py` (v3.8.0), `streaming_service.py` (simplified - removed thinking buffer parsing).
@@ -375,7 +375,7 @@ Pengguna kini menerima notifikasi eksplisit via UI ketika terjadi masalah dengan
 
 ### 5. Arsitektur Prompt (v3.8.0 - Current)
 
-* **Evolusi Format**: JSON → XML tags (`<thinking>`) → XML buffer parser → Single `<thinkingDiv>` → Markdown bold inside `<thinkingDiv>` (final).
+* **Evolusi Format**: JSON → XML tags (`<thinking>`) → XML buffer parser → Single `<tkD>` → Markdown bold inside `<tkD>` (final).
 * **Instruksi Eksekusi**: Section baru "## ⚠️ INSTRUKSI EKSEKUSI (WAJIB)" memaksa AI untuk:
   1. Eksekusi setiap poin di thinking secara lengkap
   2. Tidak berhenti mid-answer

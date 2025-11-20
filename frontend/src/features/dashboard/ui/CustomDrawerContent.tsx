@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/src/shared/api/supabase";
 import { useAuthActions, useAuthUser } from "@/src/features/auth/store";
 import { Avatar } from "@/src/entities/user/ui/Avatar";
-import ConversationSidebar from "@/src/features/chat/ui/ConversationSidebar";
+import ListConversationSidebar from "@/src/features/chat/ui/ListConversationSidebar";
 
 // Komponen menu item dengan icon
 const MenuItem = ({ icon, text, onPress }: { icon: string; text: string; onPress?: () => void }) => (
@@ -57,7 +57,7 @@ export function CustomDrawerContent() {
           <MenuItem icon="logo-twitter" text="Premium" onPress={() => router.push("/(app)/premium" as any)} />
           <MenuItem icon="play-circle-outline" text="Video" onPress={() => {}} />
           <MenuItem icon="chatbubble-outline" text="Chat" onPress={() => {}} />
-          <ConversationSidebar />
+          <ListConversationSidebar />
           <MenuItem icon="people-outline" text="Communities" onPress={() => {}} />
           <MenuItem icon="bookmark-outline" text="Bookmarks" onPress={() => router.push("/(app)/bookmarks" as any)} />
           <MenuItem icon="list-outline" text="Lists" onPress={() => router.push("/(app)/lists" as any)} />
@@ -81,7 +81,7 @@ export function CustomDrawerContent() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-  scrollContent: { padding: 16 },
+  scrollContent: { paddingLeft: 16 },
   profileSection: { 
     marginBottom: 24,
     paddingBottom: 12

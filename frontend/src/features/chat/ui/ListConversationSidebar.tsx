@@ -10,12 +10,23 @@ interface Conversation {
   updated_at?: string;
 }
 
-const ConversationSidebar = React.forwardRef<any, {}>(function ConversationSidebar(props, ref) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
+
+// Module-level cache for conversations
+let cachedConversations: Conversation[] | null = null;
+let cachedHasMore: boolean | null = null;
+let cachedPage: number | null = null;
+let hasFetchedConversations = false;
+
+interface ListConversationSidebarProps {
+  onCloseSidebar?: () => void;
+}
+
+const ListConversationSidebar = React.forwardRef<any, ListConversationSidebarProps>(function ListConversationSidebar(props, ref) {
+  const [conversations, setConversations] = useState<Conversation[]>(cachedConversations || []);
+  const [loading, setLoading] = useState(!cachedConversations);
   const [expanded, setExpanded] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(cachedHasMore !== null ? cachedHasMore : true);
+  const [page, setPage] = useState(cachedPage || 1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editLoading, setEditLoading] = useState(false);
@@ -24,6 +35,14 @@ const ConversationSidebar = React.forwardRef<any, {}>(function ConversationSideb
   const size = 10;
 
   const fetchConversations = async (loadMore = false) => {
+    // Only allow fetch if not already fetched, unless loading more
+    if (!loadMore && hasFetchedConversations && cachedConversations) {
+      setConversations(cachedConversations);
+      setHasMore(cachedHasMore !== null ? cachedHasMore : true);
+      setPage(cachedPage || 1);
+      setLoading(false);
+      return;
+    }
     try {
       const currentPage = loadMore ? page : 1;
       const url = `/api/v1/chat/conversations-list?page=${currentPage}&size=${size}`;
@@ -33,30 +52,50 @@ const ConversationSidebar = React.forwardRef<any, {}>(function ConversationSideb
       console.log('Conversations response:', data);
       if (data.items && Array.isArray(data.items)) {
         if (loadMore) {
-          setConversations(prev => [...prev, ...data.items]);
+          setConversations(prev => {
+            const updated = [...prev, ...data.items];
+            cachedConversations = updated;
+            return updated;
+          });
           setPage(currentPage + 1);
+          cachedPage = currentPage + 1;
         } else {
           setConversations(data.items);
           setPage(2);
+          cachedConversations = data.items;
+          cachedPage = 2;
         }
         setHasMore(currentPage < (data.total_pages || 1));
+        cachedHasMore = currentPage < (data.total_pages || 1);
+        hasFetchedConversations = true;
       } else {
         console.warn('No items in response');
         setHasMore(false);
+        cachedHasMore = false;
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
       if (!loadMore) {
         setConversations([]);
+        cachedConversations = [];
       }
       setHasMore(false);
+      cachedHasMore = false;
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchConversations();
+    if (!hasFetchedConversations || !cachedConversations) {
+      fetchConversations();
+    } else {
+      setConversations(cachedConversations);
+      setHasMore(cachedHasMore !== null ? cachedHasMore : true);
+      setPage(cachedPage || 1);
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleExpand = () => {
@@ -148,7 +187,18 @@ const ConversationSidebar = React.forwardRef<any, {}>(function ConversationSideb
                 {editLoading && <ActivityIndicator size="small" color="#3b82f6" style={{ marginLeft: 8 }} />}
               </View>
             ) : (
-              <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/(app)/(tabs)/chat/${conv.conversation_id}`)}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                onPress={() => {
+                  router.push(`/(app)/(tabs)/chat/${conv.conversation_id}`);
+                  // Try to close sidebar if parent provides a close handler
+                  if (props.onCloseSidebar) {
+                    props.onCloseSidebar();
+                  } else if (ref && typeof ref !== 'function' && ref?.current && typeof ref.current.close === 'function') {
+                    ref.current.close();
+                  }
+                }}
+              >
                 <Text style={styles.title} numberOfLines={1}>{conv.title}</Text>
               </TouchableOpacity>
             )}
@@ -177,13 +227,13 @@ const ConversationSidebar = React.forwardRef<any, {}>(function ConversationSideb
   );
 });
 
-export default ConversationSidebar;
+export default ListConversationSidebar;
 
 const styles = StyleSheet.create({
     addNewChatBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: 'rgba(16,185,129,0.08)',
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
       borderRadius: 8,
       paddingVertical: 10,
       paddingHorizontal: 12,
@@ -191,12 +241,8 @@ const styles = StyleSheet.create({
       marginTop: 2,
     },
   sidebar: {
-    width: 260,
-    backgroundColor: '#18181b',
     paddingVertical: 16,
     paddingHorizontal: 12,
-    borderRightWidth: 1,
-    borderRightColor: '#27272a',
   },
   sidebarTitle: {
     color: '#fff',
@@ -225,7 +271,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#27272a',
     paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingHorizontal: 5,
     gap: 8,
   },
   editBtn: {
